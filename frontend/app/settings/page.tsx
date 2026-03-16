@@ -341,12 +341,12 @@ export default function SettingsPage() {
         </Section>
 
         {/* Notifications */}
-        <Section title="Notifications" description="Get alerted when high-value arbs appear. Email is free, Pushover is optional ($5).">
+        <Section title="Notifications" description="Get alerted when high-value arbs appear. Resend (free, 100 emails/day) or Gmail SMTP for local dev.">
           <div className="grid grid-cols-3 gap-4 mb-3">
             <div className="bg-bg-hover rounded-lg px-4 py-3">
-              <p className="text-[10px] font-mono text-text-muted uppercase">Email (Free)</p>
-              <p className={`font-mono font-bold ${(settings as any)?.notifications?.email_configured ? "text-accent-green" : "text-text-muted"}`}>
-                {(settings as any)?.notifications?.email_configured
+              <p className="text-[10px] font-mono text-text-muted uppercase">Resend Email (Cloud)</p>
+              <p className={`font-mono font-bold ${(settings as any)?.notifications?.resend_configured ? "text-accent-green" : "text-text-muted"}`}>
+                {(settings as any)?.notifications?.resend_configured
                   ? (settings as any)?.notifications?.email_address || "Active"
                   : "Not Set Up"}
               </p>
@@ -365,7 +365,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <p className="text-xs text-text-muted">
-            For free email alerts, add NOTIFY_EMAIL and NOTIFY_EMAIL_PASSWORD (Gmail app password) to your .env file. Set MIN_PROFIT_TO_NOTIFY to control the threshold.
+            For cloud email: sign up at resend.com (free), add RESEND_API_KEY + NOTIFY_EMAIL to your environment variables.
           </p>
         </Section>
       </div>

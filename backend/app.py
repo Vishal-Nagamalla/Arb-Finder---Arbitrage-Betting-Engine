@@ -159,6 +159,7 @@ class SettingsUpdate(BaseModel):
 
 class NotificationConfigRequest(BaseModel):
     min_profit_to_notify: Optional[float] = None
+    resend_api_key: Optional[str] = None
     email_address: Optional[str] = None
     email_password: Optional[str] = None
     pushover_user_key: Optional[str] = None
@@ -209,7 +210,8 @@ class AppState:
             i += 1
         logger.info(f"Loaded {self.key_manager.get_status()['total_keys']} API key(s)")
 
-        # Notifications setup (email is free, pushover is optional)
+        # Notifications setup
+        resend_key = os.environ.get("RESEND_API_KEY", "")
         notify_email = os.environ.get("NOTIFY_EMAIL", "")
         notify_email_pw = os.environ.get("NOTIFY_EMAIL_PASSWORD", "")
         pushover_user = os.environ.get("PUSHOVER_USER_KEY", "")
@@ -217,6 +219,7 @@ class AppState:
         min_notify = float(os.environ.get("MIN_PROFIT_TO_NOTIFY", "25.0"))
 
         self.notifier = NotificationService(
+            resend_api_key=resend_key or None,
             email_address=notify_email or None,
             email_password=notify_email_pw or None,
             pushover_user_key=pushover_user or None,
@@ -224,12 +227,14 @@ class AppState:
             min_profit_to_notify=min_notify,
         )
 
-        if self.notifier.email_configured:
-            logger.info(f"Email notifications enabled ({notify_email}, min: ${min_notify})")
+        if self.notifier.resend_configured:
+            logger.info(f"Resend email notifications enabled ({notify_email}, min: ${min_notify})")
+        elif self.notifier.smtp_configured:
+            logger.info(f"Gmail SMTP notifications enabled ({notify_email}, min: ${min_notify})")
         if self.notifier.pushover_configured:
             logger.info(f"Pushover notifications enabled (min: ${min_notify})")
         if not self.notifier.is_configured:
-            logger.info("No notifications configured. Add NOTIFY_EMAIL + NOTIFY_EMAIL_PASSWORD to .env for free email alerts.")
+            logger.info("No notifications configured. Add RESEND_API_KEY + NOTIFY_EMAIL to .env")
 
         self._refresh_fetcher()
 
@@ -289,10 +294,10 @@ async def lifespan(app: FastAPI):
 
     state.scheduler.set_callbacks(scheduled_scan, scheduled_notify)
 
-    # Auto-start scheduler if email is configured (cloud mode)
-    if state.notifier.email_configured:
+    # Auto-start scheduler if notifications are configured (cloud mode)
+    if state.notifier.is_configured:
         state.scheduler.start()
-        logger.info("Smart scheduler auto-started (email notifications configured)")
+        logger.info("Smart scheduler auto-started (notifications configured)")
 
     logger.info("Arb Finder backend started (Phase 5)")
     yield
@@ -666,6 +671,8 @@ async def get_notification_config():
 async def update_notification_config(req: NotificationConfigRequest):
     if req.min_profit_to_notify is not None:
         state.notifier.min_profit_to_notify = req.min_profit_to_notify
+    if req.resend_api_key:
+        state.notifier.resend_api_key = req.resend_api_key
     if req.email_address:
         state.notifier.email_address = req.email_address
     if req.email_password:

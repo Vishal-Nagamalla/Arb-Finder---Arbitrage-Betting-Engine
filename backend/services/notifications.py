@@ -2,49 +2,60 @@
 Notification Service
 Sends alerts when high-value arbs are detected.
 
-Supports two methods (use either or both):
+Supports three methods (use any combination):
 
-1. EMAIL (FREE) - Gmail SMTP
+1. RESEND (FREE, works on Render/cloud) - HTTP-based email
    Setup:
-   - Enable 2FA on your Google account
-   - Go to https://myaccount.google.com/apppasswords
-   - Create an app password for "Arb Finder"
+   - Sign up at https://resend.com (free, 100 emails/day)
+   - Create an API key
+   - Add to .env:
+     RESEND_API_KEY=re_xxxxxxxxx
+     NOTIFY_EMAIL=you@gmail.com
+
+2. GMAIL SMTP (FREE, local dev only) - Blocked on most cloud hosts
+   Setup:
+   - Enable 2FA, create app password at https://myaccount.google.com/apppasswords
    - Add to .env:
      NOTIFY_EMAIL=you@gmail.com
      NOTIFY_EMAIL_PASSWORD=xxxx xxxx xxxx xxxx
 
-2. PUSHOVER ($5 one-time) - iPhone/Android push notifications
+3. PUSHOVER ($5 one-time) - iPhone/Android push notifications
    Setup:
    - Sign up at pushover.net, download app
-   - Create an Application at pushover.net/apps
    - Add to .env:
      PUSHOVER_USER_KEY=your_user_key
      PUSHOVER_APP_TOKEN=your_app_token
 """
 
+import json
 import smtplib
 import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
 
 class NotificationService:
-    """Send notifications for high-value arb opportunities via email and/or push."""
+    """Send notifications for high-value arb opportunities."""
 
     def __init__(
         self,
-        # Email (free)
+        # Resend (free, works on cloud)
+        resend_api_key: str | None = None,
+        # Email
         email_address: str | None = None,
         email_password: str | None = None,
-        # Pushover (optional)
+        # Pushover
         pushover_user_key: str | None = None,
         pushover_app_token: str | None = None,
         # Config
         min_profit_to_notify: float = 25.0,
     ):
+        self.resend_api_key = resend_api_key
         self.email_address = email_address
         self.email_password = email_password
         self.pushover_user_key = pushover_user_key
@@ -54,10 +65,14 @@ class NotificationService:
 
     @property
     def is_configured(self) -> bool:
-        return self.email_configured or self.pushover_configured
+        return self.resend_configured or self.smtp_configured or self.pushover_configured
 
     @property
-    def email_configured(self) -> bool:
+    def resend_configured(self) -> bool:
+        return bool(self.resend_api_key and self.email_address)
+
+    @property
+    def smtp_configured(self) -> bool:
         return bool(self.email_address and self.email_password)
 
     @property
@@ -147,15 +162,56 @@ class NotificationService:
         return subject, plain, html
 
     def _send_email(self, subject: str, plain: str, html: str) -> bool:
-        """Send email via Gmail SMTP. Completely free."""
-        if not self.email_configured:
+        """Send email. Tries Resend (HTTP) first, falls back to Gmail SMTP."""
+        if self.resend_configured:
+            if self._send_via_resend(subject, html):
+                return True
+            logger.warning("Resend failed, trying SMTP fallback...")
+
+        if self.smtp_configured:
+            return self._send_via_smtp(subject, plain, html)
+
+        return False
+
+    def _send_via_resend(self, subject: str, html: str) -> bool:
+        """Send email via Resend HTTP API. Works on any cloud host. Free 100 emails/day."""
+        try:
+            data = json.dumps({
+                "from": "Arb Finder <onboarding@resend.dev>",
+                "to": [self.email_address],
+                "subject": subject,
+                "html": html,
+            }).encode("utf-8")
+
+            req = Request(
+                "https://api.resend.com/emails",
+                data=data,
+                headers={
+                    "Authorization": f"Bearer {self.resend_api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+
+            with urlopen(req, timeout=15) as response:
+                result = json.loads(response.read())
+                logger.info(f"Resend email sent: {subject} (id: {result.get('id', '?')})")
+                return True
+
+        except URLError as e:
+            logger.error(f"Resend failed: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Resend error: {e}")
             return False
 
+    def _send_via_smtp(self, subject: str, plain: str, html: str) -> bool:
+        """Send email via Gmail SMTP. Works locally, blocked on most cloud hosts."""
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
             msg["From"] = self.email_address
-            msg["To"] = self.email_address  # Send to yourself
+            msg["To"] = self.email_address
 
             msg.attach(MIMEText(plain, "plain"))
             msg.attach(MIMEText(html, "html"))
@@ -164,11 +220,10 @@ class NotificationService:
                 server.login(self.email_address, self.email_password)
                 server.send_message(msg)
 
-            logger.info(f"Email sent: {subject}")
+            logger.info(f"SMTP email sent: {subject}")
             return True
-
         except Exception as e:
-            logger.error(f"Email failed: {e}")
+            logger.error(f"SMTP failed: {e}")
             return False
 
     async def _send_pushover(self, title: str, message: str, profit: float) -> bool:
@@ -213,8 +268,8 @@ class NotificationService:
         profit = arb.get("guaranteed_profit", 0)
         sent = False
 
-        # Try email first (free)
-        if self.email_configured:
+        # Try email (Resend first, then SMTP)
+        if self.resend_configured or self.smtp_configured:
             if self._send_email(subject, plain, html):
                 sent = True
 
@@ -326,7 +381,8 @@ class NotificationService:
     def get_config(self) -> dict:
         return {
             "configured": self.is_configured,
-            "email_configured": self.email_configured,
+            "resend_configured": self.resend_configured,
+            "smtp_configured": self.smtp_configured,
             "email_address": self.email_address[:3] + "***" if self.email_address else None,
             "pushover_configured": self.pushover_configured,
             "min_profit_to_notify": self.min_profit_to_notify,
