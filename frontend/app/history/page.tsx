@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/api";
+import { api, authFetch } from "@/lib/api";
 import { formatCurrency, formatPercent, formatSportName, timeAgo } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -255,8 +255,8 @@ export default function HistoryPage() {
   const loadData = useCallback(async () => {
     try {
       const [betsRes, statsRes] = await Promise.all([
-        fetch(`/api/bets${filter ? `?status=${filter}` : ""}`).then((r) => r.json()),
-        fetch("/api/bets/stats").then((r) => r.json()),
+        authFetch(`/bets${filter ? `?status=${filter}` : ""}`).then((r) => r.json()),
+        authFetch("/bets/stats").then((r) => r.json()),
       ]);
       setBets(betsRes.bets || []);
       setStats(statsRes);
@@ -272,7 +272,7 @@ export default function HistoryPage() {
   const handleResolve = async (winner: string, profit: number | null, notes: string) => {
     if (!resolvingBet) return;
     try {
-      await fetch(`/api/bets/${resolvingBet.id}/resolve`, {
+      await authFetch(`/bets/${resolvingBet.id}/resolve`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ winning_outcome: winner, actual_profit: profit, notes }),
@@ -286,7 +286,7 @@ export default function HistoryPage() {
 
   const handleCancel = async (id: string) => {
     try {
-      await fetch(`/api/bets/${id}/cancel`, { method: "PUT" });
+      await authFetch(`/bets/${id}/cancel`, { method: "PUT" });
       loadData();
     } catch (e) {
       console.error("Failed to cancel:", e);
@@ -295,7 +295,7 @@ export default function HistoryPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await fetch(`/api/bets/${id}`, { method: "DELETE" });
+      await authFetch(`/bets/${id}`, { method: "DELETE" });
       loadData();
     } catch (e) {
       console.error("Failed to delete:", e);

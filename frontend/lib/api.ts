@@ -4,10 +4,25 @@
  */
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const AUTH_TOKEN = process.env.NEXT_PUBLIC_APP_PASSWORD || "";
+
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "Content-Type": "application/json" };
+  if (AUTH_TOKEN) h["Authorization"] = `Bearer ${AUTH_TOKEN}`;
+  return h;
+}
+
+/** Use for raw fetch calls outside the api object */
+export function authFetch(path: string, options?: RequestInit): Promise<Response> {
+  return fetch(`${BASE}${path}`, {
+    headers: authHeaders(),
+    ...options,
+  });
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders(),
     ...options,
   });
 

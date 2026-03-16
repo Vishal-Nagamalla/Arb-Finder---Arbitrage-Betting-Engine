@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { api, authFetch } from "@/lib/api";
 import {
   formatCurrency, formatPercent, formatSportName, formatOddsAmerican,
   formatGameTime, timeUntilGame, gameUrgency, urgencyColor, urgencyBgColor, riskLabel,
@@ -79,7 +79,7 @@ export default function BudgetPage() {
     if (!plan) return;
     for (const a of plan.allocations) {
       try {
-        await fetch("/api/bets", {
+        await authFetch("/bets", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

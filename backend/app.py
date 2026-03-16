@@ -307,6 +307,39 @@ app.add_middleware(
 )
 
 
+# ─── Authentication ───────────────────────────────────────────────────────────
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    """Simple password protection. Only /health is public."""
+    # Allow health check without auth
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    # Allow OPTIONS (CORS preflight)
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    app_password = os.environ.get("APP_PASSWORD", "")
+    if not app_password:
+        # No password set = no auth required (local dev)
+        return await call_next(request)
+
+    # Check Authorization header
+    auth = request.headers.get("Authorization", "")
+    if auth == f"Bearer {app_password}":
+        return await call_next(request)
+
+    # Check query param fallback (for browser testing)
+    if request.query_params.get("key") == app_password:
+        return await call_next(request)
+
+    return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 def _get_book_display(book_key: str) -> str:

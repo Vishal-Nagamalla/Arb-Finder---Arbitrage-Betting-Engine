@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api, Settings, AutoScanStatus } from "@/lib/api";
+import { api, authFetch, Settings, AutoScanStatus } from "@/lib/api";
 import { formatSportName } from "@/lib/utils";
 
 // ─── Toggle Chip ─────────────────────────────────────────────────────────────
@@ -319,7 +319,7 @@ export default function SettingsPage() {
                 const key = input?.value?.trim();
                 if (!key) return;
                 try {
-                  await fetch("/api/keys", {
+                  await authFetch("/keys", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ api_key: key }),

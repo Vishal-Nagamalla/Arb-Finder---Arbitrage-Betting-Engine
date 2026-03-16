@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { api, ScanResponse, ArbOpportunity } from "@/lib/api";
+import { api, authFetch, ScanResponse, ArbOpportunity } from "@/lib/api";
 import {
   formatCurrency,
   formatPercent,
@@ -263,7 +263,7 @@ export default function DashboardPage() {
 
   const trackBet = async (arb: ArbOpportunity) => {
     try {
-      await fetch("/api/bets", {
+      await authFetch("/bets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(arb),
