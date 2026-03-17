@@ -72,15 +72,7 @@ class OddsFetcher:
     ) -> list[dict]:
         """
         Get odds for a specific sport across all bookmakers.
-        
-        Args:
-            sport: Sport key (e.g., "basketball_nba", "americanfootball_nfl")
-            markets: Comma-separated market types (h2h, spreads, totals)
-            bookmakers_override: Override the default bookmaker filter
-            
-        Returns:
-            List of event objects, each containing bookmaker odds.
-            Structure matches what ArbitrageScanner.scan_event() expects.
+        Includes retry logic for reliability.
         """
         httpx = self._get_httpx()
         params = {
@@ -93,42 +85,59 @@ class OddsFetcher:
         books = bookmakers_override or self.bookmakers
         if books:
             params["bookmakers"] = ",".join(books)
-        
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{BASE_URL}/sports/{sport}/odds",
-                params=params,
-                timeout=30.0,
-            )
-            response.raise_for_status()
-            self._update_usage(response)
-            
-            events = response.json()
-            logger.info(
-                f"Fetched {len(events)} events for {sport} "
-                f"(Remaining API requests: {self.remaining_requests})"
-            )
-            return events
+
+        # Retry up to 2 times on failure
+        last_error = None
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"{BASE_URL}/sports/{sport}/odds",
+                        params=params,
+                        timeout=45.0,
+                    )
+                    response.raise_for_status()
+                    self._update_usage(response)
+                    
+                    events = response.json()
+                    logger.info(
+                        f"Fetched {len(events)} events for {sport} "
+                        f"(Remaining API requests: {self.remaining_requests})"
+                    )
+                    return events
+            except Exception as e:
+                last_error = e
+                if attempt < 2:
+                    logger.warning(f"Retry {attempt + 1} for {sport}: {e}")
+                    import asyncio
+                    await asyncio.sleep(1)  # Brief pause before retry
+
+        logger.error(f"Failed to fetch {sport} after 3 attempts: {last_error}")
+        raise last_error
 
     async def get_all_odds(self, sports: list[str], markets: str = "h2h") -> list[dict]:
         """
         Get odds for multiple sports.
-        
-        Args:
-            sports: List of sport keys to fetch
-            markets: Market types
-            
-        Returns:
-            Combined list of all events across all sports
+        Retries individual sports on failure, logs clearly what succeeded/failed.
         """
         all_events = []
+        succeeded = []
+        failed = []
+
         for sport in sports:
             try:
                 events = await self.get_odds(sport, markets)
                 all_events.extend(events)
+                succeeded.append(sport)
             except Exception as e:
-                logger.error(f"Failed to fetch odds for {sport}: {e}")
+                failed.append(sport)
+                logger.error(f"Skipping {sport}: {e}")
         
+        if failed:
+            logger.warning(f"Scan complete: {len(succeeded)} sports OK, {len(failed)} failed: {failed}")
+        else:
+            logger.info(f"Scan complete: all {len(succeeded)} sports fetched, {len(all_events)} total events")
+
         return all_events
 
     def _update_usage(self, response):

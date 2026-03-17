@@ -25,6 +25,7 @@ Supports multiple methods:
 """
 
 import json
+import os
 import smtplib
 import logging
 from email.mime.text import MIMEText
@@ -166,43 +167,42 @@ class NotificationService:
         return subject, plain, html
 
     def _send_ntfy(self, arb: dict) -> bool:
-        """Send push notification via ntfy.sh. Free, no signup, works everywhere."""
+        """Send push notification via ntfy.sh. Clean, actionable format."""
         if not self.ntfy_configured:
             return False
 
         profit = arb.get("guaranteed_profit", 0)
         pct = arb.get("profit_percentage", 0)
         event = arb.get("event_name", "Unknown")
-        book_a = arb.get("book_a", "?")
-        book_b = arb.get("book_b", "?")
+        book_a = arb.get("book_a_display", arb.get("book_a", "?"))
+        book_b = arb.get("book_b_display", arb.get("book_b", "?"))
         outcome_a = arb.get("outcome_a", "?")
         outcome_b = arb.get("outcome_b", "?")
         stake_a = arb.get("stake_a", 0)
         stake_b = arb.get("stake_b", 0)
-        total = arb.get("total_stake", 0)
-        ret = arb.get("guaranteed_return", 0)
+        dashboard_url = os.environ.get("DASHBOARD_URL", "")
 
         message = (
-            f"{event}\n\n"
-            f"{outcome_a} on {book_a}: ${stake_a:.2f}\n"
-            f"{outcome_b} on {book_b}: ${stake_b:.2f}\n\n"
-            f"Total: ${total:.2f} -> ${ret:.2f}\n"
+            f"BET 1: {book_a}\n"
+            f"  {outcome_a} -> ${stake_a:.2f}\n\n"
+            f"BET 2: {book_b}\n"
+            f"  {outcome_b} -> ${stake_b:.2f}\n\n"
             f"Profit: ${profit:.2f} ({pct:+.1f}% ROI)"
         )
 
         try:
             data = message.encode("utf-8")
-            req = Request(
-                f"https://ntfy.sh/{self.ntfy_topic}",
-                data=data,
-                headers={
-                    "Title": f"ARB: ${profit:.2f} profit ({pct:+.1f}%)",
-                    "Priority": "5" if profit >= 50 else "4",
-                    "Tags": "moneybag,chart_with_upwards_trend",
-                },
-                method="POST",
-            )
-            with urlopen(req, timeout=10) as response:
+            headers = {
+                "Title": f"${profit:.2f} arb: {event}",
+                "Priority": "5" if profit >= 50 else "4",
+                "Tags": "moneybag",
+            }
+            if dashboard_url:
+                headers["Click"] = dashboard_url
+                headers["Actions"] = f"view, Open Dashboard, {dashboard_url}"
+
+            req = Request(f"https://ntfy.sh/{self.ntfy_topic}", data=data, headers=headers, method="POST")
+            with urlopen(req, timeout=10):
                 logger.info(f"ntfy sent: ${profit:.2f} - {event}")
                 return True
         except Exception as e:
@@ -210,39 +210,41 @@ class NotificationService:
             return False
 
     def _send_ntfy_digest(self, arbs: list[dict], scan_label: str) -> bool:
-        """Send a digest notification via ntfy.sh."""
-        if not self.ntfy_configured:
+        """Send a clean digest notification via ntfy.sh."""
+        if not self.ntfy_configured or not arbs:
             return False
 
-        qualifying = [a for a in arbs if a.get("guaranteed_profit", 0) >= self.min_profit_to_notify]
-        if not qualifying:
-            return False
+        total_profit = sum(a.get("guaranteed_profit", 0) for a in arbs)
+        count = len(arbs)
+        dashboard_url = os.environ.get("DASHBOARD_URL", "")
 
-        total_profit = sum(a.get("guaranteed_profit", 0) for a in qualifying)
-        count = len(qualifying)
-
-        lines = [f"Found {count} arb(s) - ${total_profit:.2f} total profit\n"]
-        for i, a in enumerate(qualifying, 1):
+        lines = []
+        for i, a in enumerate(arbs, 1):
+            book_a = a.get("book_a_display", a.get("book_a", "?"))
+            book_b = a.get("book_b_display", a.get("book_b", "?"))
+            profit = a.get("guaranteed_profit", 0)
+            pct = a.get("profit_percentage", 0)
             lines.append(
-                f"#{i}: {a.get('event_name', '?')} - ${a.get('guaranteed_profit', 0):.2f} "
-                f"({a.get('outcome_a', '?')} on {a.get('book_a', '?')}: ${a.get('stake_a', 0):.2f}, "
-                f"{a.get('outcome_b', '?')} on {a.get('book_b', '?')}: ${a.get('stake_b', 0):.2f})"
+                f"#{i} ${profit:.2f} ({pct:+.1f}%)\n"
+                f"  {a.get('outcome_a', '?')} on {book_a}: ${a.get('stake_a', 0):.2f}\n"
+                f"  {a.get('outcome_b', '?')} on {book_b}: ${a.get('stake_b', 0):.2f}"
             )
-        lines.append("\nOpen your dashboard to place bets!")
+
+        message = "\n\n".join(lines)
 
         try:
-            data = "\n".join(lines).encode("utf-8")
-            req = Request(
-                f"https://ntfy.sh/{self.ntfy_topic}",
-                data=data,
-                headers={
-                    "Title": f"Arb Alert: {count} found - ${total_profit:.2f} ({scan_label})",
-                    "Priority": "5" if total_profit >= 50 else "4",
-                    "Tags": "moneybag",
-                },
-                method="POST",
-            )
-            with urlopen(req, timeout=10) as response:
+            data = message.encode("utf-8")
+            headers = {
+                "Title": f"{count} arb(s) - ${total_profit:.2f} total ({scan_label})",
+                "Priority": "5" if total_profit >= 50 else "4",
+                "Tags": "moneybag",
+            }
+            if dashboard_url:
+                headers["Click"] = dashboard_url
+                headers["Actions"] = f"view, Open Dashboard, {dashboard_url}"
+
+            req = Request(f"https://ntfy.sh/{self.ntfy_topic}", data=data, headers=headers, method="POST")
+            with urlopen(req, timeout=10):
                 logger.info(f"ntfy digest sent: {count} arbs, ${total_profit:.2f}")
                 return True
         except Exception as e:
@@ -387,24 +389,25 @@ class NotificationService:
         return sent
 
     def send_digest(self, arbs: list[dict], scan_label: str) -> bool:
-        """Send a digest summarizing all arbs found in a scheduled scan."""
+        """Send a digest summarizing ALL arbs found in a scheduled scan."""
         if not self.is_configured:
             return False
 
-        qualifying = [a for a in arbs if a.get("guaranteed_profit", 0) >= self.min_profit_to_notify]
-        if not qualifying:
+        # Send ALL arbs found, not just high-profit ones
+        # User wants to see everything and decide themselves
+        if not arbs:
             return False
 
         sent = False
 
         # ntfy digest
         if self.ntfy_configured:
-            if self._send_ntfy_digest(qualifying, scan_label):
+            if self._send_ntfy_digest(arbs, scan_label):
                 sent = True
 
         # Email digest (Resend or SMTP)
         if self.resend_configured or self.smtp_configured:
-            sent = self._send_email_digest(qualifying, scan_label) or sent
+            sent = self._send_email_digest(arbs, scan_label) or sent
 
         return sent
 

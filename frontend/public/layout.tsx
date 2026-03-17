@@ -5,6 +5,14 @@ import Sidebar from "@/components/Sidebar";
 export const metadata: Metadata = {
   title: "Arb Finder",
   description: "Personal arbitrage betting detection engine",
+  manifest: "/manifest.json",
+  themeColor: "#00e87b",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Arb Finder",
+  },
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -298,9 +298,9 @@ class ArbitrageScanner:
         for odds_a, key_a, title_a in outcome_odds[name_a]:
             for odds_b, key_b, title_b in outcome_odds[name_b]:
                 for odds_c, key_c, title_c in outcome_odds[name_c]:
-                    # Need at least 2 different books
-                    books_used = {key_a, key_b, key_c}
-                    if len(books_used) < 2:
+                    # ALL three outcomes must be on DIFFERENT books
+                    # You cannot bet opposing sides on the same sportsbook
+                    if key_a == key_b or key_a == key_c or key_b == key_c:
                         continue
                     
                     result = self.check_three_way_arb(odds_a, odds_b, odds_c)

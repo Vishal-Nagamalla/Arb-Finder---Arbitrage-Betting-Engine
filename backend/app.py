@@ -356,8 +356,18 @@ def _get_book_display(book_key: str) -> str:
     return info["display_name"] if info else book_key.title()
 
 def _run_scan_pipeline(events: list[dict], bankroll: float) -> list[ArbOpportunityResponse]:
-    all_arbs: list[ArbOpportunity] = []
+    # Filter out games that have already started
+    now_iso = datetime.now(timezone.utc).isoformat()
+    active_events = []
     for event in events:
+        commence = event.get("commence_time", "")
+        if commence and commence > now_iso:
+            active_events.append(event)
+        elif not commence:
+            active_events.append(event)  # Keep if no time listed
+
+    all_arbs: list[ArbOpportunity] = []
+    for event in active_events:
         all_arbs.extend(state.scanner.scan_event(event))
 
     best: dict[str, ArbOpportunity] = {}
