@@ -195,9 +195,8 @@ class ArbitrageScanner:
         away = event.get("away_team", "Away")
         event_name = f"{away} @ {home}"
         
-        # Extract best odds per outcome across all books
-        # Structure: {outcome_name: [(odds_decimal, book_key, book_title), ...]}
-        outcome_odds: dict[str, list[tuple[float, str, str]]] = {}
+        # ─── H2H (Moneyline) ─────────────────────────────────────────────
+        h2h_odds: dict[str, list[tuple[float, str, str]]] = {}
         
         for book in bookmakers:
             book_key = book.get("key", "unknown")
@@ -209,27 +208,79 @@ class ArbitrageScanner:
                 for outcome in market.get("outcomes", []):
                     name = outcome["name"]
                     price = outcome["price"]
-                    if name not in outcome_odds:
-                        outcome_odds[name] = []
-                    outcome_odds[name].append((price, book_key, book_title))
+                    if price <= 1.0:
+                        continue  # Invalid odds
+                    if name not in h2h_odds:
+                        h2h_odds[name] = []
+                    h2h_odds[name].append((price, book_key, book_title))
         
-        outcomes = list(outcome_odds.keys())
-        
-        # 2-way market
+        outcomes = list(h2h_odds.keys())
         if len(outcomes) == 2:
-            arbs.extend(
-                self._find_two_way_arbs(
-                    event_name, sport, outcomes, outcome_odds
-                )
-            )
-        
-        # 3-way market (soccer)
+            arbs.extend(self._find_two_way_arbs(event_name, sport, outcomes, h2h_odds))
         elif len(outcomes) == 3:
-            arbs.extend(
-                self._find_three_way_arbs(
-                    event_name, sport, outcomes, outcome_odds
-                )
-            )
+            arbs.extend(self._find_three_way_arbs(event_name, sport, outcomes, h2h_odds))
+
+        # ─── Spreads ─────────────────────────────────────────────────────
+        # Group by spread point value, find arbs across books
+        spread_groups: dict[float, dict[str, list[tuple[float, str, str]]]] = {}
+        
+        for book in bookmakers:
+            book_key = book.get("key", "unknown")
+            book_title = book.get("title", book_key)
+            
+            for market in book.get("markets", []):
+                if market.get("key") != "spreads":
+                    continue
+                for outcome in market.get("outcomes", []):
+                    name = outcome["name"]
+                    price = outcome.get("price", 0)
+                    point = outcome.get("point")
+                    if price <= 1.0 or point is None:
+                        continue
+                    # Use absolute point value to group matching spreads
+                    abs_point = abs(point)
+                    if abs_point not in spread_groups:
+                        spread_groups[abs_point] = {}
+                    # Label includes team name + spread direction
+                    label = f"{name} {point:+.1f}"
+                    if label not in spread_groups[abs_point]:
+                        spread_groups[abs_point][label] = []
+                    spread_groups[abs_point][label].append((price, book_key, book_title))
+        
+        for point_val, odds_by_outcome in spread_groups.items():
+            outcomes_s = list(odds_by_outcome.keys())
+            if len(outcomes_s) == 2:
+                spread_event = f"{event_name} (spread {point_val})"
+                arbs.extend(self._find_two_way_arbs(spread_event, sport, outcomes_s, odds_by_outcome))
+
+        # ─── Totals (Over/Under) ─────────────────────────────────────────
+        total_groups: dict[float, dict[str, list[tuple[float, str, str]]]] = {}
+        
+        for book in bookmakers:
+            book_key = book.get("key", "unknown")
+            book_title = book.get("title", book_key)
+            
+            for market in book.get("markets", []):
+                if market.get("key") != "totals":
+                    continue
+                for outcome in market.get("outcomes", []):
+                    name = outcome["name"]  # "Over" or "Under"
+                    price = outcome.get("price", 0)
+                    point = outcome.get("point")
+                    if price <= 1.0 or point is None:
+                        continue
+                    if point not in total_groups:
+                        total_groups[point] = {}
+                    label = f"{name} {point}"
+                    if label not in total_groups[point]:
+                        total_groups[point][label] = []
+                    total_groups[point][label].append((price, book_key, book_title))
+        
+        for total_val, odds_by_outcome in total_groups.items():
+            outcomes_t = list(odds_by_outcome.keys())
+            if len(outcomes_t) == 2:
+                total_event = f"{event_name} (total {total_val})"
+                arbs.extend(self._find_two_way_arbs(total_event, sport, outcomes_t, odds_by_outcome))
         
         return arbs
 

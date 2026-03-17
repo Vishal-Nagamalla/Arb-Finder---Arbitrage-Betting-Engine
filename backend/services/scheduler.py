@@ -39,13 +39,19 @@ def _get_et_offset() -> timedelta:
         return timedelta(hours=-5)  # EST (Dec, Jan, Feb)
 
 # Default scan schedule (ET times)
+# Peak window (5-8pm) gets extra scans since that's when arbs appear most
 DEFAULT_SCHEDULE = [
     {"hour": 11, "minute": 0, "label": "Morning lines"},
     {"hour": 12, "minute": 30, "label": "Mid-day check"},
+    {"hour": 17, "minute": 0, "label": "Pre-game early"},
     {"hour": 17, "minute": 30, "label": "Pre-game rush"},
+    {"hour": 18, "minute": 0, "label": "Line movement"},
     {"hour": 18, "minute": 30, "label": "Tip-off window"},
+    {"hour": 19, "minute": 0, "label": "Early games"},
+    {"hour": 19, "minute": 30, "label": "Line adjustments"},
     {"hour": 20, "minute": 0, "label": "Late games"},
 ]
+# 9 scans x ~6 sports = ~54 API calls/day = ~1620/month (needs 3-4 keys)
 
 # Sports to scan by time of day (skip irrelevant sports to save API calls)
 SPORT_SCHEDULE = {

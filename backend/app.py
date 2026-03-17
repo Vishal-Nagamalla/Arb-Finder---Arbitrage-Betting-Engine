@@ -275,7 +275,7 @@ async def lifespan(app: FastAPI):
             logger.warning("Scheduled scan skipped: no API key")
             return []
         try:
-            events = await state.fetcher.get_all_odds(sports)
+            events = await state.fetcher.get_all_odds(sports, markets="h2h,spreads,totals")
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(
@@ -433,7 +433,7 @@ async def _auto_scan_loop():
         try:
             state.rotate_key_if_needed()
             if state.fetcher:
-                events = await state.fetcher.get_all_odds(state.scan_sports)
+                events = await state.fetcher.get_all_odds(state.scan_sports, markets="h2h,spreads,totals")
                 usage = state.fetcher.get_usage()
                 if usage.get("remaining_requests") is not None:
                     state.key_manager.report_usage(
@@ -556,7 +556,7 @@ async def scan_for_arbs(
             state.scanner.min_profit_pct = min_profit
 
         try:
-            events = await state.fetcher.get_all_odds(scan_sports)
+            events = await state.fetcher.get_all_odds(scan_sports, markets="h2h,spreads,totals")
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(
