@@ -98,11 +98,11 @@ export default function BudgetPage() {
   };
 
   return (
-    <div className="px-8 py-6 max-w-[1400px]">
-      <div className="mb-6">
-        <h2 className="text-xl font-bold text-text-primary">Budget Optimizer</h2>
-        <p className="text-sm text-text-muted mt-0.5">
-          Set your total budget and get the optimal split across multiple arbs, with book rotation built in
+    <div className="px-4 md:px-8 py-4 md:py-6 max-w-[1400px]">
+      <div className="mb-4 md:mb-6">
+        <h2 className="text-lg md:text-xl font-bold text-text-primary">Budget Optimizer</h2>
+        <p className="text-xs md:text-sm text-text-muted mt-0.5">
+          Set your total budget and get the optimal split across multiple arbs
         </p>
       </div>
 
@@ -130,7 +130,7 @@ export default function BudgetPage() {
       {plan && (
         <>
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4 mb-4 md:mb-6">
             <StatCard label="Total Budget" value={formatCurrency(plan.total_budget)} />
             <StatCard label="Allocated" value={formatCurrency(plan.total_allocated)} />
             <StatCard label="Remaining" value={formatCurrency(plan.total_remaining)} color="text-text-secondary" />

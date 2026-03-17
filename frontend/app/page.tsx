@@ -29,12 +29,12 @@ function StatCard({
   color?: string;
 }) {
   return (
-    <div className="bg-bg-card border border-bg-border rounded-xl px-5 py-4">
-      <p className="text-[11px] font-mono text-text-muted uppercase tracking-wider mb-1">
+    <div className="bg-bg-card border border-bg-border rounded-xl px-3 sm:px-5 py-3 sm:py-4">
+      <p className="text-[10px] sm:text-[11px] font-mono text-text-muted uppercase tracking-wider mb-0.5 sm:mb-1">
         {label}
       </p>
-      <p className={`text-2xl font-mono font-bold tabular-nums ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-text-muted mt-1">{sub}</p>}
+      <p className={`text-lg sm:text-2xl font-mono font-bold tabular-nums ${color}`}>{value}</p>
+      {sub && <p className="text-[10px] sm:text-xs text-text-muted mt-0.5 sm:mt-1">{sub}</p>}
     </div>
   );
 }
@@ -51,57 +51,61 @@ function ArbCard({ arb, bankroll, onTrack }: { arb: ArbOpportunity; bankroll: nu
       onClick={() => setExpanded(!expanded)}
     >
       {/* Header */}
-      <div className="px-5 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-mono font-bold px-2 py-1 rounded-md bg-accent-blueDim text-accent-blue uppercase">
+      <div className="px-3 sm:px-5 py-3 sm:py-4 flex items-start sm:items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
+          <span className="text-[9px] sm:text-[10px] font-mono font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md bg-accent-blueDim text-accent-blue uppercase">
             {formatSportName(arb.sport)}
           </span>
-          <span className={`text-[10px] font-mono font-bold px-2 py-1 rounded-md ${urgencyBgColor(urgency)}`}>
+          <span className={`text-[9px] sm:text-[10px] font-mono font-bold px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md ${urgencyBgColor(urgency)}`}>
             {urgency === "dead" ? "STARTED" : urgency === "urgent" ? "ACT NOW" : urgency === "soon" ? "SOON" : timeUntilGame(arb.commence_time)}
           </span>
           <div>
-            <p className="font-semibold text-text-primary text-sm">{arb.event_name}</p>
-            <p className="text-xs text-text-muted mt-0.5">
+            <p className="font-semibold text-text-primary text-xs sm:text-sm">{arb.event_name}</p>
+            <p className="text-[10px] sm:text-xs text-text-muted mt-0.5">
               {formatGameTime(arb.commence_time)}
             </p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-xl font-mono font-bold text-accent-green glow-green tabular-nums">
+        <div className="text-right shrink-0">
+          <p className="text-lg sm:text-xl font-mono font-bold text-accent-green glow-green tabular-nums">
             {formatPercent(arb.profit_percentage)}
           </p>
-          <p className="text-xs font-mono text-accent-green tabular-nums">
-            {formatCurrency(arb.guaranteed_profit)} guaranteed
+          <p className="text-[10px] sm:text-xs font-mono text-accent-green tabular-nums">
+            {formatCurrency(arb.guaranteed_profit)}
           </p>
         </div>
       </div>
 
       {/* Bet Split Bar */}
-      <div className="px-5 pb-3 flex gap-3">
-        <div className="flex-1 bg-bg-hover rounded-lg px-4 py-3">
+      <div className="px-3 sm:px-5 pb-3 flex flex-col sm:flex-row gap-2 sm:gap-3">
+        <div className="flex-1 bg-bg-hover rounded-lg px-3 sm:px-4 py-2.5 sm:py-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-mono text-text-muted uppercase">{arb.book_a}</span>
             <span className="text-xs font-mono text-text-secondary">
               {formatOddsAmerican(arb.odds_a_american)}
             </span>
           </div>
-          <p className="text-sm font-semibold text-text-primary">{arb.outcome_a}</p>
-          <p className="text-lg font-mono font-bold text-accent-yellow tabular-nums mt-1">
-            {formatCurrency(arb.stake_a)}
-          </p>
+          <div className="flex items-center justify-between sm:block">
+            <p className="text-sm font-semibold text-text-primary">{arb.outcome_a}</p>
+            <p className="text-lg font-mono font-bold text-accent-yellow tabular-nums sm:mt-1">
+              {formatCurrency(arb.stake_a)}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center text-text-muted text-xs font-mono">VS</div>
-        <div className="flex-1 bg-bg-hover rounded-lg px-4 py-3">
+        <div className="hidden sm:flex items-center text-text-muted text-xs font-mono">VS</div>
+        <div className="flex-1 bg-bg-hover rounded-lg px-3 sm:px-4 py-2.5 sm:py-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[10px] font-mono text-text-muted uppercase">{arb.book_b}</span>
             <span className="text-xs font-mono text-text-secondary">
               {formatOddsAmerican(arb.odds_b_american)}
             </span>
           </div>
-          <p className="text-sm font-semibold text-text-primary">{arb.outcome_b}</p>
-          <p className="text-lg font-mono font-bold text-accent-yellow tabular-nums mt-1">
-            {formatCurrency(arb.stake_b)}
-          </p>
+          <div className="flex items-center justify-between sm:block">
+            <p className="text-sm font-semibold text-text-primary">{arb.outcome_b}</p>
+            <p className="text-lg font-mono font-bold text-accent-yellow tabular-nums sm:mt-1">
+              {formatCurrency(arb.stake_b)}
+            </p>
+          </div>
         </div>
         {arb.outcome_c && (
           <>
@@ -112,12 +116,12 @@ function ArbCard({ arb, bankroll, onTrack }: { arb: ArbOpportunity; bankroll: nu
                   {arb.book_c}
                 </span>
                 <span className="text-xs font-mono text-text-secondary">
-                  {arb.odds_c_american != null ? formatOddsAmerican(arb.odds_c_american) : ""}
+                  {arb.odds_c_american != null ? formatOddsAmerican(arb.odds_c_american as number) : ""}
                 </span>
               </div>
               <p className="text-sm font-semibold text-text-primary">{arb.outcome_c}</p>
               <p className="text-lg font-mono font-bold text-accent-yellow tabular-nums mt-1">
-                {arb.stake_c != null ? formatCurrency(arb.stake_c) : ""}
+                {arb.stake_c != null ? formatCurrency(arb.stake_c as number) : ""}
               </p>
             </div>
           </>
@@ -277,21 +281,21 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="px-8 py-6 max-w-[1400px]">
+    <div className="px-4 md:px-8 py-4 md:py-6 max-w-[1400px]">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 md:mb-6">
         <div>
-          <h2 className="text-xl font-bold text-text-primary">Live Scanner</h2>
-          <p className="text-sm text-text-muted mt-0.5">
+          <h2 className="text-lg md:text-xl font-bold text-text-primary">Live Scanner</h2>
+          <p className="text-xs md:text-sm text-text-muted mt-0.5">
             Scan sportsbooks for arbitrage opportunities
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Auto-scan toggle */}
           <button
             onClick={toggleAutoScan}
             className={`
-              flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all border
+              flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all border
               ${
                 autoScan
                   ? "bg-accent-greenDim border-accent-green/30 text-accent-green"
@@ -300,7 +304,7 @@ export default function DashboardPage() {
             `}
           >
             <span className={`w-2 h-2 rounded-full ${autoScan ? "bg-accent-green pulse-green" : "bg-text-muted"}`} />
-            Auto-Scan {autoScan ? "ON" : "OFF"}
+            Auto {autoScan ? "ON" : "OFF"}
           </button>
 
           {/* Scan button */}
@@ -308,7 +312,7 @@ export default function DashboardPage() {
             onClick={runScan}
             disabled={loading}
             className={`
-              px-5 py-2.5 rounded-lg text-sm font-semibold transition-all
+              px-4 sm:px-5 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-semibold transition-all
               ${
                 loading
                   ? "bg-bg-hover text-text-muted cursor-wait"
@@ -346,7 +350,7 @@ export default function DashboardPage() {
       )}
 
       {/* Stats Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-4 md:mb-6">
         <StatCard
           label="Arbs Found"
           value={String(opportunities.length)}
