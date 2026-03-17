@@ -23,9 +23,20 @@ from typing import Callable, Awaitable
 
 logger = logging.getLogger(__name__)
 
-# ET timezone offset (UTC-5 standard, UTC-4 daylight)
-# We'll use UTC times and convert
-ET_OFFSET = timedelta(hours=-4)  # EDT (March-November)
+# ET timezone - compute correct offset based on DST
+def _get_et_offset() -> timedelta:
+    """Get current ET offset. EDT (Mar-Nov) = UTC-4, EST (Nov-Mar) = UTC-5."""
+    now = datetime.now(timezone.utc)
+    month = now.month
+    # Simplified DST check: March 2nd Sunday through November 1st Sunday
+    # Good enough for our purposes
+    if 3 <= month <= 10:
+        return timedelta(hours=-4)  # EDT
+    elif month == 11:
+        # First Sunday of November
+        return timedelta(hours=-5)  # EST (approximate)
+    else:
+        return timedelta(hours=-5)  # EST (Dec, Jan, Feb)
 
 # Default scan schedule (ET times)
 DEFAULT_SCHEDULE = [
@@ -65,7 +76,7 @@ def get_sports_for_time(hour_et: int) -> list[str]:
 
 def et_now() -> datetime:
     """Get current time in ET."""
-    return datetime.now(timezone.utc) + ET_OFFSET
+    return datetime.now(timezone.utc) + _get_et_offset()
 
 
 def next_scan_time(schedule: list[dict] | None = None) -> tuple[datetime, str]:
@@ -78,10 +89,10 @@ def next_scan_time(schedule: list[dict] | None = None) -> tuple[datetime, str]:
         scan_et = datetime.combine(
             today,
             time(slot["hour"], slot["minute"]),
-            tzinfo=timezone(ET_OFFSET),
+            tzinfo=timezone(_get_et_offset()),
         )
         if scan_et > now_et:
-            scan_utc = scan_et - ET_OFFSET  # Convert to UTC
+            scan_utc = scan_et - _get_et_offset()  # Convert to UTC
             return scan_utc, slot["label"]
 
     # All today's scans passed, schedule first scan tomorrow
@@ -90,9 +101,9 @@ def next_scan_time(schedule: list[dict] | None = None) -> tuple[datetime, str]:
     scan_et = datetime.combine(
         tomorrow,
         time(first["hour"], first["minute"]),
-        tzinfo=timezone(ET_OFFSET),
+        tzinfo=timezone(_get_et_offset()),
     )
-    scan_utc = scan_et - ET_OFFSET
+    scan_utc = scan_et - _get_et_offset()
     return scan_utc, first["label"]
 
 

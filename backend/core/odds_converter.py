@@ -35,6 +35,8 @@ class OddsConverter:
         """
         if decimal < 1.0:
             raise ValueError("Decimal odds must be >= 1.0")
+        if decimal == 1.0:
+            return -10000  # Essentially "certain", no meaningful American odds
         if decimal >= 2.0:
             return round((decimal - 1) * 100, 1)
         else:

@@ -193,6 +193,7 @@ class AppState:
             "pointsbet", "bet365",
         ]
         self.auto_scan_task: Optional[asyncio.Task] = None
+        self.scan_lock = asyncio.Lock()  # Prevent concurrent scans
         self.auto_scan_interval: int = 120
         self.auto_scan_enabled: bool = False
 
@@ -357,13 +358,20 @@ def _get_book_display(book_key: str) -> str:
 
 def _run_scan_pipeline(events: list[dict], bankroll: float) -> list[ArbOpportunityResponse]:
     # Filter out games that have already started
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
     active_events = []
     for event in events:
         commence = event.get("commence_time", "")
-        if commence and commence > now_iso:
-            active_events.append(event)
-        elif not commence:
+        if commence:
+            try:
+                # Parse ISO format, handle both "Z" and "+00:00" endings
+                commence_dt = datetime.fromisoformat(commence.replace("Z", "+00:00"))
+                if commence_dt > now:
+                    active_events.append(event)
+                # Skip games that already started
+            except (ValueError, TypeError):
+                active_events.append(event)  # Keep if time can't be parsed
+        else:
             active_events.append(event)  # Keep if no time listed
 
     all_arbs: list[ArbOpportunity] = []
@@ -524,48 +532,61 @@ async def scan_for_arbs(
     bankroll: Optional[float] = Query(default=None),
     min_profit: Optional[float] = Query(default=None),
 ):
-    state.rotate_key_if_needed()
-    if not state.fetcher:
-        raise HTTPException(status_code=503, detail="No API keys configured.")
-
-    scan_sports = sports.split(",") if sports else state.scan_sports
-    scan_bankroll = bankroll or state.bankroll
-    original_min = state.scanner.min_profit_pct
-    if min_profit is not None:
-        state.scanner.min_profit_pct = min_profit
-
-    try:
-        events = await state.fetcher.get_all_odds(scan_sports)
-        usage = state.fetcher.get_usage()
-        if usage.get("remaining_requests") is not None:
-            state.key_manager.report_usage(
-                state.fetcher.api_key, usage["remaining_requests"], usage["used_requests"],
-            )
-            state.rotate_key_if_needed()
-
-        arbs = _run_scan_pipeline(events, scan_bankroll)
-        state.latest_arbs = arbs
-        state.events_scanned = len(events)
-        state.last_scan_time = datetime.now(timezone.utc).isoformat()
-
-        if state.notifier.is_configured and arbs:
-            arb_dicts = [a.model_dump() for a in arbs]
-            await state.notifier.notify_batch(arb_dicts)
-
+    # Prevent concurrent scans (rapid clicking)
+    if state.scan_lock.locked():
         return ScanResponse(
-            opportunities=arbs, total_found=len(arbs),
-            events_scanned=len(events), sports_scanned=scan_sports,
-            bankroll=scan_bankroll, scan_time=state.last_scan_time,
+            opportunities=state.latest_arbs,
+            total_found=len(state.latest_arbs),
+            events_scanned=state.events_scanned,
+            sports_scanned=state.scan_sports,
+            bankroll=state.bankroll,
+            scan_time=state.last_scan_time or "scanning...",
             api_usage=state.key_manager.get_status(),
         )
-    except Exception as e:
-        logger.error(f"Scan failed: {e}")
-        if state.fetcher and ("401" in str(e) or "429" in str(e)):
-            state.key_manager.report_error(state.fetcher.api_key)
-            state.rotate_key_if_needed()
-        raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
-    finally:
-        state.scanner.min_profit_pct = original_min
+
+    async with state.scan_lock:
+        state.rotate_key_if_needed()
+        if not state.fetcher:
+            raise HTTPException(status_code=503, detail="No API keys configured.")
+
+        scan_sports = sports.split(",") if sports else state.scan_sports
+        scan_bankroll = bankroll or state.bankroll
+        original_min = state.scanner.min_profit_pct
+        if min_profit is not None:
+            state.scanner.min_profit_pct = min_profit
+
+        try:
+            events = await state.fetcher.get_all_odds(scan_sports)
+            usage = state.fetcher.get_usage()
+            if usage.get("remaining_requests") is not None:
+                state.key_manager.report_usage(
+                    state.fetcher.api_key, usage["remaining_requests"], usage["used_requests"],
+                )
+                state.rotate_key_if_needed()
+
+            arbs = _run_scan_pipeline(events, scan_bankroll)
+            state.latest_arbs = arbs
+            state.events_scanned = len(events)
+            state.last_scan_time = datetime.now(timezone.utc).isoformat()
+
+            if state.notifier.is_configured and arbs:
+                arb_dicts = [a.model_dump() for a in arbs]
+                await state.notifier.notify_batch(arb_dicts)
+
+            return ScanResponse(
+                opportunities=arbs, total_found=len(arbs),
+                events_scanned=len(events), sports_scanned=scan_sports,
+                bankroll=scan_bankroll, scan_time=state.last_scan_time,
+                api_usage=state.key_manager.get_status(),
+            )
+        except Exception as e:
+            logger.error(f"Scan failed: {e}")
+            if state.fetcher and ("401" in str(e) or "429" in str(e)):
+                state.key_manager.report_error(state.fetcher.api_key)
+                state.rotate_key_if_needed()
+            raise HTTPException(status_code=500, detail=f"Scan failed: {str(e)}")
+        finally:
+            state.scanner.min_profit_pct = original_min
 
 @app.get("/api/arbs", response_model=ScanResponse)
 async def get_latest_arbs():

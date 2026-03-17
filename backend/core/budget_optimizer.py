@@ -125,22 +125,27 @@ def optimize_budget(
         times_b = books_used.get(book_b, 0)
         max_book_uses = max(times_a, times_b)
 
+        # How many scoreable arbs remain after this one?
+        remaining_arbs = sum(1 for s, a in scored_arbs[scored_arbs.index((score, arb)) + 1:]
+                           if a.get("event_name", "") not in used_events) if len(scored_arbs) > 1 else 0
+
         # Allocation strategy:
-        # - First arb (best ROI, fresh books): gets up to 50% of remaining budget
-        # - Subsequent arbs with fresh books: up to 40% of remaining
-        # - Arbs reusing books already in plan: capped lower to spread risk
-        if max_book_uses == 0:
-            # Fresh books - allocate generously, proportional to ROI quality
+        # - Only 1 arb available: give it everything
+        # - First arb with fresh books: up to 60% of budget
+        # - Subsequent arbs with fresh books: up to 50% of remaining
+        # - Arbs reusing books: capped lower to spread risk
+        if remaining_arbs == 0:
+            # Last or only arb, give it everything remaining
+            alloc_amount = remaining
+        elif max_book_uses == 0:
             if len(allocations) == 0:
-                alloc_amount = min(remaining, remaining * 0.6)  # Best arb gets up to 60%
+                alloc_amount = remaining * 0.6
             else:
-                alloc_amount = min(remaining, remaining * 0.5)
+                alloc_amount = remaining * 0.5
         elif max_book_uses == 1:
-            # Books used once already - reduce allocation
-            alloc_amount = min(remaining, remaining * 0.35)
+            alloc_amount = remaining * 0.35
         else:
-            # Books used 2+ times - minimal allocation for safety
-            alloc_amount = min(remaining, remaining * 0.2)
+            alloc_amount = remaining * 0.2
 
         # Floor: don't go below minimum
         if alloc_amount < min_per_arb:
@@ -153,6 +158,10 @@ def optimize_budget(
         odds_a = arb.get("odds_a_decimal", 2.0)
         odds_b = arb.get("odds_b_decimal", 2.0)
 
+        # Safety: reject invalid odds
+        if odds_a <= 1.0 or odds_b <= 1.0:
+            continue
+
         prob_a = 1 / odds_a
         prob_b = 1 / odds_b
         combined = prob_a + prob_b
@@ -163,6 +172,13 @@ def optimize_budget(
         stake_a = round(alloc_amount * prob_a / combined, 2)
         stake_b = round(alloc_amount * prob_b / combined, 2)
         actual_total = stake_a + stake_b
+
+        # Check minimum bet requirements (most books: $0.10-$1.00)
+        min_bet_a = 1.00  # Conservative minimum
+        min_bet_b = 1.00
+        if stake_a < min_bet_a or stake_b < min_bet_b:
+            warnings.append(f"Skipped {arb.get('event_name', '?')}: stake too low for book minimums")
+            continue
 
         guaranteed_return = actual_total / combined
         guaranteed_profit = round(guaranteed_return - actual_total, 2)
