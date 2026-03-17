@@ -211,6 +211,7 @@ class AppState:
         logger.info(f"Loaded {self.key_manager.get_status()['total_keys']} API key(s)")
 
         # Notifications setup
+        ntfy_topic = os.environ.get("NTFY_TOPIC", "")
         resend_key = os.environ.get("RESEND_API_KEY", "")
         notify_email = os.environ.get("NOTIFY_EMAIL", "")
         notify_email_pw = os.environ.get("NOTIFY_EMAIL_PASSWORD", "")
@@ -219,6 +220,7 @@ class AppState:
         min_notify = float(os.environ.get("MIN_PROFIT_TO_NOTIFY", "25.0"))
 
         self.notifier = NotificationService(
+            ntfy_topic=ntfy_topic or None,
             resend_api_key=resend_key or None,
             email_address=notify_email or None,
             email_password=notify_email_pw or None,
@@ -227,6 +229,8 @@ class AppState:
             min_profit_to_notify=min_notify,
         )
 
+        if self.notifier.ntfy_configured:
+            logger.info(f"ntfy.sh notifications enabled (topic: {ntfy_topic}, min: ${min_notify})")
         if self.notifier.resend_configured:
             logger.info(f"Resend email notifications enabled ({notify_email}, min: ${min_notify})")
         elif self.notifier.smtp_configured:
@@ -234,7 +238,7 @@ class AppState:
         if self.notifier.pushover_configured:
             logger.info(f"Pushover notifications enabled (min: ${min_notify})")
         if not self.notifier.is_configured:
-            logger.info("No notifications configured. Add RESEND_API_KEY + NOTIFY_EMAIL to .env")
+            logger.info("No notifications configured. Add NTFY_TOPIC to .env (easiest) or RESEND_API_KEY + NOTIFY_EMAIL")
 
         self._refresh_fetcher()
 

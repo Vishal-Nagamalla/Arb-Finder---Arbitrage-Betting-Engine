@@ -2,29 +2,26 @@
 Notification Service
 Sends alerts when high-value arbs are detected.
 
-Supports three methods (use any combination):
+Supports multiple methods:
 
-1. RESEND (FREE, works on Render/cloud) - HTTP-based email
+1. NTFY.SH (FREE, easiest, recommended) - Push notifications to phone
    Setup:
-   - Sign up at https://resend.com (free, 100 emails/day)
-   - Create an API key
-   - Add to .env:
-     RESEND_API_KEY=re_xxxxxxxxx
-     NOTIFY_EMAIL=you@gmail.com
+   - Download "ntfy" app on iPhone/Android
+   - Pick any secret topic name (e.g., "my-arb-finder-xyz123")
+   - Subscribe to that topic in the app
+   - Add to .env: NTFY_TOPIC=my-arb-finder-xyz123
+   That's it. No signup, no API key, no domain verification.
 
-2. GMAIL SMTP (FREE, local dev only) - Blocked on most cloud hosts
+2. RESEND (FREE, 100 emails/day) - HTML email alerts
    Setup:
-   - Enable 2FA, create app password at https://myaccount.google.com/apppasswords
-   - Add to .env:
-     NOTIFY_EMAIL=you@gmail.com
-     NOTIFY_EMAIL_PASSWORD=xxxx xxxx xxxx xxxx
+   - Sign up at https://resend.com, create API key
+   - Add to .env: RESEND_API_KEY=re_xxx  NOTIFY_EMAIL=you@gmail.com
 
-3. PUSHOVER ($5 one-time) - iPhone/Android push notifications
+3. GMAIL SMTP (FREE, local dev only) - Blocked on most cloud hosts
    Setup:
-   - Sign up at pushover.net, download app
-   - Add to .env:
-     PUSHOVER_USER_KEY=your_user_key
-     PUSHOVER_APP_TOKEN=your_app_token
+   - Add to .env: NOTIFY_EMAIL=you@gmail.com  NOTIFY_EMAIL_PASSWORD=xxxx
+
+4. PUSHOVER ($5 one-time) - iPhone/Android push notifications
 """
 
 import json
@@ -44,7 +41,9 @@ class NotificationService:
 
     def __init__(
         self,
-        # Resend (free, works on cloud)
+        # ntfy.sh (free, easiest)
+        ntfy_topic: str | None = None,
+        # Resend (free, email)
         resend_api_key: str | None = None,
         # Email
         email_address: str | None = None,
@@ -55,6 +54,7 @@ class NotificationService:
         # Config
         min_profit_to_notify: float = 25.0,
     ):
+        self.ntfy_topic = ntfy_topic
         self.resend_api_key = resend_api_key
         self.email_address = email_address
         self.email_password = email_password
@@ -65,7 +65,11 @@ class NotificationService:
 
     @property
     def is_configured(self) -> bool:
-        return self.resend_configured or self.smtp_configured or self.pushover_configured
+        return self.ntfy_configured or self.resend_configured or self.smtp_configured or self.pushover_configured
+
+    @property
+    def ntfy_configured(self) -> bool:
+        return bool(self.ntfy_topic)
 
     @property
     def resend_configured(self) -> bool:
@@ -160,6 +164,90 @@ class NotificationService:
         """
 
         return subject, plain, html
+
+    def _send_ntfy(self, arb: dict) -> bool:
+        """Send push notification via ntfy.sh. Free, no signup, works everywhere."""
+        if not self.ntfy_configured:
+            return False
+
+        profit = arb.get("guaranteed_profit", 0)
+        pct = arb.get("profit_percentage", 0)
+        event = arb.get("event_name", "Unknown")
+        book_a = arb.get("book_a", "?")
+        book_b = arb.get("book_b", "?")
+        outcome_a = arb.get("outcome_a", "?")
+        outcome_b = arb.get("outcome_b", "?")
+        stake_a = arb.get("stake_a", 0)
+        stake_b = arb.get("stake_b", 0)
+        total = arb.get("total_stake", 0)
+        ret = arb.get("guaranteed_return", 0)
+
+        message = (
+            f"{event}\n\n"
+            f"{outcome_a} on {book_a}: ${stake_a:.2f}\n"
+            f"{outcome_b} on {book_b}: ${stake_b:.2f}\n\n"
+            f"Total: ${total:.2f} -> ${ret:.2f}\n"
+            f"Profit: ${profit:.2f} ({pct:+.1f}% ROI)"
+        )
+
+        try:
+            data = message.encode("utf-8")
+            req = Request(
+                f"https://ntfy.sh/{self.ntfy_topic}",
+                data=data,
+                headers={
+                    "Title": f"ARB: ${profit:.2f} profit ({pct:+.1f}%)",
+                    "Priority": "5" if profit >= 50 else "4",
+                    "Tags": "moneybag,chart_with_upwards_trend",
+                },
+                method="POST",
+            )
+            with urlopen(req, timeout=10) as response:
+                logger.info(f"ntfy sent: ${profit:.2f} - {event}")
+                return True
+        except Exception as e:
+            logger.error(f"ntfy failed: {e}")
+            return False
+
+    def _send_ntfy_digest(self, arbs: list[dict], scan_label: str) -> bool:
+        """Send a digest notification via ntfy.sh."""
+        if not self.ntfy_configured:
+            return False
+
+        qualifying = [a for a in arbs if a.get("guaranteed_profit", 0) >= self.min_profit_to_notify]
+        if not qualifying:
+            return False
+
+        total_profit = sum(a.get("guaranteed_profit", 0) for a in qualifying)
+        count = len(qualifying)
+
+        lines = [f"Found {count} arb(s) - ${total_profit:.2f} total profit\n"]
+        for i, a in enumerate(qualifying, 1):
+            lines.append(
+                f"#{i}: {a.get('event_name', '?')} - ${a.get('guaranteed_profit', 0):.2f} "
+                f"({a.get('outcome_a', '?')} on {a.get('book_a', '?')}: ${a.get('stake_a', 0):.2f}, "
+                f"{a.get('outcome_b', '?')} on {a.get('book_b', '?')}: ${a.get('stake_b', 0):.2f})"
+            )
+        lines.append("\nOpen your dashboard to place bets!")
+
+        try:
+            data = "\n".join(lines).encode("utf-8")
+            req = Request(
+                f"https://ntfy.sh/{self.ntfy_topic}",
+                data=data,
+                headers={
+                    "Title": f"Arb Alert: {count} found - ${total_profit:.2f} ({scan_label})",
+                    "Priority": "5" if total_profit >= 50 else "4",
+                    "Tags": "moneybag",
+                },
+                method="POST",
+            )
+            with urlopen(req, timeout=10) as response:
+                logger.info(f"ntfy digest sent: {count} arbs, ${total_profit:.2f}")
+                return True
+        except Exception as e:
+            logger.error(f"ntfy digest failed: {e}")
+            return False
 
     def _send_email(self, subject: str, plain: str, html: str) -> bool:
         """Send email. Tries Resend (HTTP) first, falls back to Gmail SMTP."""
@@ -264,17 +352,23 @@ class NotificationService:
         if not self.should_notify(arb):
             return False
 
-        subject, plain, html = self._build_message(arb)
-        profit = arb.get("guaranteed_profit", 0)
         sent = False
+
+        # Try ntfy first (simplest, most reliable on cloud)
+        if self.ntfy_configured:
+            if self._send_ntfy(arb):
+                sent = True
 
         # Try email (Resend first, then SMTP)
         if self.resend_configured or self.smtp_configured:
+            subject, plain, html = self._build_message(arb)
             if self._send_email(subject, plain, html):
                 sent = True
 
         # Also try Pushover if configured
         if self.pushover_configured:
+            subject, plain, _ = self._build_message(arb)
+            profit = arb.get("guaranteed_profit", 0)
             if await self._send_pushover(subject, plain, profit):
                 sent = True
 
@@ -293,14 +387,29 @@ class NotificationService:
         return sent
 
     def send_digest(self, arbs: list[dict], scan_label: str) -> bool:
-        """Send a digest email summarizing all arbs found in a scheduled scan."""
-        if not self.email_configured:
+        """Send a digest summarizing all arbs found in a scheduled scan."""
+        if not self.is_configured:
             return False
 
         qualifying = [a for a in arbs if a.get("guaranteed_profit", 0) >= self.min_profit_to_notify]
         if not qualifying:
             return False
 
+        sent = False
+
+        # ntfy digest
+        if self.ntfy_configured:
+            if self._send_ntfy_digest(qualifying, scan_label):
+                sent = True
+
+        # Email digest (Resend or SMTP)
+        if self.resend_configured or self.smtp_configured:
+            sent = self._send_email_digest(qualifying, scan_label) or sent
+
+        return sent
+
+    def _send_email_digest(self, qualifying: list[dict], scan_label: str) -> bool:
+        """Send HTML email digest."""
         total_profit = sum(a.get("guaranteed_profit", 0) for a in qualifying)
         count = len(qualifying)
 
@@ -381,6 +490,8 @@ class NotificationService:
     def get_config(self) -> dict:
         return {
             "configured": self.is_configured,
+            "ntfy_configured": self.ntfy_configured,
+            "ntfy_topic": self.ntfy_topic[:8] + "..." if self.ntfy_topic and len(self.ntfy_topic) > 8 else self.ntfy_topic,
             "resend_configured": self.resend_configured,
             "smtp_configured": self.smtp_configured,
             "email_address": self.email_address[:3] + "***" if self.email_address else None,
