@@ -247,6 +247,25 @@ class AppState:
 
         self._refresh_fetcher()
 
+        # Load saved settings from database (persists across redeploys)
+        saved = self.tracker.load_all_settings()
+        if saved:
+            if "bankroll" in saved:
+                self.bankroll = float(saved["bankroll"])
+            if "scan_sports" in saved:
+                self.scan_sports = saved["scan_sports"]
+            if "enabled_books" in saved:
+                self.enabled_books = saved["enabled_books"]
+                if self.fetcher:
+                    self.fetcher.bookmakers = self.enabled_books
+            if "min_profit_pct" in saved:
+                self.scanner.min_profit_pct = float(saved["min_profit_pct"])
+            if "max_profit_pct" in saved:
+                self.scanner.max_profit_pct = float(saved["max_profit_pct"])
+            if "auto_scan_interval" in saved:
+                self.auto_scan_interval = int(saved["auto_scan_interval"])
+            logger.info(f"Loaded saved settings from database: {list(saved.keys())}")
+
     def _refresh_fetcher(self):
         current_key = self.key_manager.get_current_key()
         if current_key:
@@ -851,6 +870,11 @@ async def update_settings(settings: SettingsUpdate):
         state.scanner.max_profit_pct = settings.max_profit_pct; updated["max_profit_pct"] = settings.max_profit_pct
     if settings.auto_scan_interval is not None:
         state.auto_scan_interval = settings.auto_scan_interval; updated["auto_scan_interval"] = settings.auto_scan_interval
+
+    # Persist to database so settings survive redeploys
+    state.tracker.save_all_settings(updated)
+    logger.info(f"Settings saved to database: {list(updated.keys())}")
+
     return {"status": "updated", "changes": updated}
 
 @app.get("/api/sports")

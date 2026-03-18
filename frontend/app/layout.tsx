@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import Providers from "@/components/Providers";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -34,8 +35,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body className="overscroll-none">
-        <Sidebar />
-        <main className="md:ml-56 min-h-screen pb-20 md:pb-0">{children}</main>
+        <Providers>
+          <Sidebar />
+          <main className="md:ml-56 min-h-screen pb-20 md:pb-0">{children}</main>
+        </Providers>
       </body>
     </html>
   );

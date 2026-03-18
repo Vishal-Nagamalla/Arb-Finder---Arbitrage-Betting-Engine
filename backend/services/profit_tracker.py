@@ -145,9 +145,61 @@ class ProfitTracker:
 
         try:
             self._execute_write(create_sql)
+            # Settings table for persistent configuration
+            settings_sql = """
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """
+            self._execute_write(settings_sql)
             logger.info("Profit tracker initialized")
         except Exception as e:
             logger.error(f"Failed to init profit tracker: {e}")
+
+    # ─── Settings Persistence ─────────────────────────────────────────────
+
+    def save_setting(self, key: str, value: str):
+        """Save a setting to the database."""
+        try:
+            existing = self._execute_one("SELECT key FROM app_settings WHERE key = ?", (key,))
+            if existing:
+                self._execute_write("UPDATE app_settings SET value = ? WHERE key = ?", (value, key))
+            else:
+                self._execute_write("INSERT INTO app_settings (key, value) VALUES (?, ?)", (key, value))
+        except Exception as e:
+            logger.error(f"Failed to save setting {key}: {e}")
+
+    def load_setting(self, key: str, default: str = "") -> str:
+        """Load a setting from the database."""
+        try:
+            row = self._execute_one("SELECT value FROM app_settings WHERE key = ?", (key,))
+            return row["value"] if row else default
+        except Exception as e:
+            logger.error(f"Failed to load setting {key}: {e}")
+            return default
+
+    def save_all_settings(self, settings: dict):
+        """Save multiple settings at once."""
+        import json
+        for key, value in settings.items():
+            self.save_setting(key, json.dumps(value) if not isinstance(value, str) else value)
+
+    def load_all_settings(self) -> dict:
+        """Load all settings from the database."""
+        import json
+        try:
+            rows = self._execute("SELECT key, value FROM app_settings")
+            result = {}
+            for row in rows:
+                try:
+                    result[row["key"]] = json.loads(row["value"])
+                except (json.JSONDecodeError, TypeError):
+                    result[row["key"]] = row["value"]
+            return result
+        except Exception as e:
+            logger.error(f"Failed to load settings: {e}")
+            return {}
 
     # ─── CRUD Operations ──────────────────────────────────────────────────
 
@@ -324,3 +376,53 @@ class ProfitTracker:
             ],
             "recent": recent,
         }
+
+    # ─── Settings Persistence ─────────────────────────────────────────────
+
+    def save_setting(self, key: str, value: str):
+        """Save a setting to the database."""
+        try:
+            if self.use_postgres:
+                self._execute_write(
+                    "INSERT INTO app_settings (key, value) VALUES (?, ?) "
+                    "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+                    (key, value),
+                )
+            else:
+                self._execute_write(
+                    "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+                    (key, value),
+                )
+        except Exception as e:
+            logger.error(f"Failed to save setting {key}: {e}")
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        """Get a setting from the database."""
+        try:
+            row = self._execute_one("SELECT value FROM app_settings WHERE key = ?", (key,))
+            return row["value"] if row else default
+        except Exception as e:
+            logger.error(f"Failed to get setting {key}: {e}")
+            return default
+
+    def save_all_settings(self, settings: dict):
+        """Save multiple settings at once."""
+        import json
+        for key, value in settings.items():
+            self.save_setting(key, json.dumps(value) if not isinstance(value, str) else value)
+
+    def load_all_settings(self) -> dict:
+        """Load all saved settings."""
+        import json
+        try:
+            rows = self._execute("SELECT key, value FROM app_settings")
+            result = {}
+            for row in rows:
+                try:
+                    result[row["key"]] = json.loads(row["value"])
+                except (json.JSONDecodeError, TypeError):
+                    result[row["key"]] = row["value"]
+            return result
+        except Exception as e:
+            logger.error(f"Failed to load settings: {e}")
+            return {}

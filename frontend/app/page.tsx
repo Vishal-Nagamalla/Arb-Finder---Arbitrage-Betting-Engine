@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api, authFetch, ScanResponse, ArbOpportunity } from "@/lib/api";
+import { useScanCache } from "@/lib/scan-cache";
 import {
   formatCurrency,
   formatPercent,
@@ -209,12 +210,21 @@ function EmptyState({ scanned }: { scanned: boolean }) {
 // ─── Main Page ───────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [data, setData] = useState<ScanResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasScanned, setHasScanned] = useState(false);
-  const [autoScan, setAutoScan] = useState(false);
+  const { scanData: data, setScanData: setData, loading, setLoading, error, setError, autoScan, setAutoScan } = useScanCache();
+  const [hasScanned, setHasScanned] = useState(data !== null);
   const [autoScanInterval, setAutoScanInterval] = useState(120);
+
+  // On first mount, load cached results from backend (no API cost)
+  useEffect(() => {
+    if (!data) {
+      api.getLatestArbs().then((result) => {
+        if (result && result.total_found > 0) {
+          setData(result);
+          setHasScanned(true);
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   const runScan = useCallback(async () => {
     setLoading(true);
