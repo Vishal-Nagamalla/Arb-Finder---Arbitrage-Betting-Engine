@@ -82,35 +82,25 @@ class KeyRotationManager:
                 entry["used"] = used
                 entry["last_used"] = datetime.now(timezone.utc).isoformat()
 
-                # Rotate when truly low - less than ~2 full scans worth
+                # ONLY mark exhausted and rotate when truly dead
                 if remaining is not None and remaining <= 5:
                     entry["exhausted"] = True
-                    logger.info(
-                        f"API key truly exhausted ({remaining} left), marking dead"
-                    )
-                    self._rotate()
-                elif remaining is not None and remaining <= 30:
-                    # Getting low but not dead - rotate to spread usage
-                    logger.info(f"API key getting low ({remaining} left), rotating")
+                    logger.info(f"API key exhausted ({remaining} left), moving to next")
                     self._rotate()
                 break
 
     def report_error(self, api_key: str):
-        """Handle an API error. Only marks exhausted if key is actually low or untested."""
+        """Handle an API error (401/429). Only rotate if key seems genuinely dead."""
         for entry in self.keys:
             if entry["key"] == api_key:
                 remaining = entry["remaining"]
-                if remaining is None or remaining <= 20:
-                    # Key is untested or actually low - mark it dead
-                    entry["exhausted"] = True
-                    logger.warning(f"API key marked exhausted (remaining: {remaining})")
-                else:
-                    # Key has plenty of credits - probably a transient error
-                    # Don't kill it, just rotate away temporarily
-                    logger.warning(
-                        f"API key got error but has {remaining} remaining - "
-                        f"rotating but NOT marking exhausted"
-                    )
+                if remaining is not None and remaining > 50:
+                    # Key has plenty of credits - this was a transient error, ignore it
+                    logger.warning(f"Transient API error on key with {remaining} remaining - ignoring")
+                    return
+                # Key is untested or low - mark it dead and move on
+                entry["exhausted"] = True
+                logger.warning(f"API key marked exhausted (remaining: {remaining})")
                 self._rotate()
                 break
 
