@@ -77,11 +77,12 @@ class KeyRotationManager:
                 entry["used"] = used
                 entry["last_used"] = datetime.now(timezone.utc).isoformat()
 
-                # If this key is running low, rotate to next
-                if remaining is not None and remaining <= 5:
+                # Rotate early - need at least 10 calls for a full scan
+                # (6 sports with retry potential)
+                if remaining is not None and remaining <= 15:
                     entry["exhausted"] = True
                     logger.info(
-                        f"API key exhausted ({remaining} left), rotating to next key"
+                        f"API key low ({remaining} left), rotating to next key"
                     )
                     self._rotate()
                 break

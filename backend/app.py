@@ -246,10 +246,15 @@ class AppState:
     def _refresh_fetcher(self):
         current_key = self.key_manager.get_current_key()
         if current_key:
-            self.fetcher = OddsFetcher(
-                api_key=current_key, regions="us",
-                odds_format="decimal", bookmakers=self.enabled_books,
-            )
+            if self.fetcher:
+                # Update key in-place so mid-scan rotation works
+                self.fetcher.api_key = current_key
+                logger.info(f"Switched fetcher to new API key")
+            else:
+                self.fetcher = OddsFetcher(
+                    api_key=current_key, regions="us",
+                    odds_format="decimal", bookmakers=self.enabled_books,
+                )
         else:
             self.fetcher = None
 
@@ -275,7 +280,14 @@ async def lifespan(app: FastAPI):
             logger.warning("Scheduled scan skipped: no API key")
             return []
         try:
-            events = await state.fetcher.get_all_odds(sports, markets="h2h,spreads,totals")
+            def _on_sport_usage(remaining, used):
+                if state.fetcher:
+                    state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
+                    state.rotate_key_if_needed()
+
+            events = await state.fetcher.get_all_odds(
+                sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+            )
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(
@@ -433,7 +445,14 @@ async def _auto_scan_loop():
         try:
             state.rotate_key_if_needed()
             if state.fetcher:
-                events = await state.fetcher.get_all_odds(state.scan_sports, markets="h2h,spreads,totals")
+                def _on_sport_usage(remaining, used):
+                    if state.fetcher:
+                        state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
+                        state.rotate_key_if_needed()
+
+                events = await state.fetcher.get_all_odds(
+                    state.scan_sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+                )
                 usage = state.fetcher.get_usage()
                 if usage.get("remaining_requests") is not None:
                     state.key_manager.report_usage(
@@ -556,7 +575,16 @@ async def scan_for_arbs(
             state.scanner.min_profit_pct = min_profit
 
         try:
-            events = await state.fetcher.get_all_odds(scan_sports, markets="h2h,spreads,totals")
+            def _on_sport_usage(remaining, used):
+                """Called after each sport - rotates key mid-scan if needed."""
+                if state.fetcher:
+                    state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
+                    state.rotate_key_if_needed()
+
+            events = await state.fetcher.get_all_odds(
+                scan_sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+            )
+            # Final usage report
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(

@@ -115,10 +115,15 @@ class OddsFetcher:
         logger.error(f"Failed to fetch {sport} after 3 attempts: {last_error}")
         raise last_error
 
-    async def get_all_odds(self, sports: list[str], markets: str = "h2h") -> list[dict]:
+    async def get_all_odds(self, sports: list[str], markets: str = "h2h",
+                          on_usage: callable = None) -> list[dict]:
         """
         Get odds for multiple sports.
         Retries individual sports on failure, logs clearly what succeeded/failed.
+
+        Args:
+            on_usage: Optional callback(remaining, used) called after each sport
+                      to allow key rotation mid-scan.
         """
         all_events = []
         succeeded = []
@@ -129,6 +134,10 @@ class OddsFetcher:
                 events = await self.get_odds(sport, markets)
                 all_events.extend(events)
                 succeeded.append(sport)
+
+                # Report usage after each sport so key manager can rotate mid-scan
+                if on_usage and self.remaining_requests is not None:
+                    on_usage(self.remaining_requests, self.used_requests)
             except Exception as e:
                 failed.append(sport)
                 logger.error(f"Skipping {sport}: {e}")
