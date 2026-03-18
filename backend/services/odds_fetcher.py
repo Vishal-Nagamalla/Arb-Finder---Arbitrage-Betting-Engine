@@ -128,18 +128,12 @@ class OddsFetcher:
         raise last_error
 
     async def get_all_odds(self, sports: list[str], markets: str = "h2h",
-                          on_usage=None, on_error=None) -> list[dict]:
-        """
-        Get odds for multiple sports.
-
-        Args:
-            on_usage: callback(remaining, used) after each successful sport
-            on_error: callback(error_str) when a sport fails with auth error,
-                      allows caller to rotate API key mid-scan
-        """
+                          on_usage=None) -> list[dict]:
+        """Get odds for multiple sports."""
         all_events = []
         succeeded = []
         failed = []
+        self.key_is_dead = False  # Flag for caller to check
 
         for sport in sports:
             try:
@@ -150,30 +144,19 @@ class OddsFetcher:
                 if on_usage and self.remaining_requests is not None:
                     on_usage(self.remaining_requests, self.used_requests)
             except APIKeyError as e:
-                # Auth/rate limit error - rotate key and retry this sport
-                logger.warning(f"Key error on {sport}: {e}, requesting rotation...")
+                # This key is dead (401/429/403). Stop trying more sports with it.
+                logger.warning(f"API key is dead: {e}")
+                self.key_is_dead = True
                 failed.append(sport)
-                if on_error:
-                    on_error(str(e))
-                    # Retry this sport with the new key
-                    try:
-                        events = await self.get_odds(sport, markets)
-                        all_events.extend(events)
-                        succeeded.append(sport)
-                        failed.pop()  # Remove from failed
-
-                        if on_usage and self.remaining_requests is not None:
-                            on_usage(self.remaining_requests, self.used_requests)
-                    except Exception as retry_e:
-                        logger.error(f"Retry with new key also failed for {sport}: {retry_e}")
+                break  # No point trying more sports with a dead key
             except Exception as e:
                 failed.append(sport)
                 logger.error(f"Skipping {sport}: {e}")
         
         if failed:
-            logger.warning(f"Scan complete: {len(succeeded)} sports OK, {len(failed)} failed: {failed}")
+            logger.warning(f"Scan: {len(succeeded)} OK, {len(failed)} failed: {failed}")
         else:
-            logger.info(f"Scan complete: all {len(succeeded)} sports fetched, {len(all_events)} total events")
+            logger.info(f"Scan: all {len(succeeded)} sports, {len(all_events)} events")
 
         return all_events
 

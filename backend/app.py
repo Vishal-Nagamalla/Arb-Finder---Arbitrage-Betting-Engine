@@ -212,9 +212,6 @@ class AppState:
             self.key_manager.add_key(key)
             i += 1
         logger.info(f"Loaded {self.key_manager.get_status()['total_keys']} API key(s)")
-        # Reset exhausted status on boot - keys may have recovered
-        self.key_manager.reset_all()
-        logger.info("Reset all key statuses (fresh start)")
 
         # Notifications setup
         ntfy_topic = os.environ.get("NTFY_TOPIC", "")
@@ -309,23 +306,27 @@ async def lifespan(app: FastAPI):
             def _on_sport_usage(remaining, used):
                 if state.fetcher:
                     state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
-                    state.rotate_key_if_needed()
-
-            def _on_sport_error(error_str):
-                if state.fetcher:
-                    state.key_manager.report_error(state.fetcher.api_key)
-                    state.rotate_key_if_needed()
 
             events = await state.fetcher.get_all_odds(
                 sports, markets="h2h,spreads,totals",
-                on_usage=_on_sport_usage, on_error=_on_sport_error,
+                on_usage=_on_sport_usage,
             )
+
+            # Dead key? Mark it and retry
+            if state.fetcher and state.fetcher.key_is_dead:
+                state.key_manager.report_error(state.fetcher.api_key)
+                state.rotate_key_if_needed()
+                if state.fetcher:
+                    events = await state.fetcher.get_all_odds(
+                        sports, markets="h2h,spreads,totals",
+                        on_usage=_on_sport_usage,
+                    )
+
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(
                     state.fetcher.api_key, usage["remaining_requests"], usage["used_requests"],
                 )
-                state.rotate_key_if_needed()
 
             arbs = _run_scan_pipeline(events, state.bankroll)
             state.latest_arbs = arbs
@@ -480,23 +481,26 @@ async def _auto_scan_loop():
                 def _on_sport_usage(remaining, used):
                     if state.fetcher:
                         state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
-                        state.rotate_key_if_needed()
-
-                def _on_sport_error(error_str):
-                    if state.fetcher:
-                        state.key_manager.report_error(state.fetcher.api_key)
-                        state.rotate_key_if_needed()
 
                 events = await state.fetcher.get_all_odds(
                     state.scan_sports, markets="h2h,spreads,totals",
-                    on_usage=_on_sport_usage, on_error=_on_sport_error,
+                    on_usage=_on_sport_usage,
                 )
+
+                if state.fetcher and state.fetcher.key_is_dead:
+                    state.key_manager.report_error(state.fetcher.api_key)
+                    state.rotate_key_if_needed()
+                    if state.fetcher:
+                        events = await state.fetcher.get_all_odds(
+                            state.scan_sports, markets="h2h,spreads,totals",
+                            on_usage=_on_sport_usage,
+                        )
+
                 usage = state.fetcher.get_usage()
                 if usage.get("remaining_requests") is not None:
                     state.key_manager.report_usage(
                         state.fetcher.api_key, usage["remaining_requests"], usage["used_requests"],
                     )
-                    state.rotate_key_if_needed()
 
                 state.latest_arbs = _run_scan_pipeline(events, state.bankroll)
                 state.events_scanned = len(events)
@@ -509,9 +513,6 @@ async def _auto_scan_loop():
                         logger.info(f"Sent {sent} push notification(s)")
         except Exception as e:
             logger.error(f"Auto-scan error: {e}")
-            if state.fetcher and ("401" in str(e) or "429" in str(e)):
-                state.key_manager.report_error(state.fetcher.api_key)
-                state.rotate_key_if_needed()
         await asyncio.sleep(state.auto_scan_interval)
 
 
@@ -614,28 +615,31 @@ async def scan_for_arbs(
 
         try:
             def _on_sport_usage(remaining, used):
-                """Called after each sport - rotates key mid-scan if needed."""
                 if state.fetcher:
                     state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
-                    state.rotate_key_if_needed()
-
-            def _on_sport_error(error_str):
-                """Called when a sport fails with auth error - rotate key."""
-                if state.fetcher:
-                    state.key_manager.report_error(state.fetcher.api_key)
-                    state.rotate_key_if_needed()
 
             events = await state.fetcher.get_all_odds(
                 scan_sports, markets="h2h,spreads,totals",
-                on_usage=_on_sport_usage, on_error=_on_sport_error,
+                on_usage=_on_sport_usage,
             )
+
+            # If the key was dead, mark it and retry with next key
+            if state.fetcher and state.fetcher.key_is_dead:
+                logger.warning("Key was dead, marking exhausted and retrying with next key")
+                state.key_manager.report_error(state.fetcher.api_key)
+                state.rotate_key_if_needed()
+                if state.fetcher:
+                    events = await state.fetcher.get_all_odds(
+                        scan_sports, markets="h2h,spreads,totals",
+                        on_usage=_on_sport_usage,
+                    )
+
             # Final usage report
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
                 state.key_manager.report_usage(
                     state.fetcher.api_key, usage["remaining_requests"], usage["used_requests"],
                 )
-                state.rotate_key_if_needed()
 
             arbs = _run_scan_pipeline(events, scan_bankroll)
             state.latest_arbs = arbs
