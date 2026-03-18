@@ -14,9 +14,13 @@ function authHeaders(): Record<string, string> {
 
 /** Use for raw fetch calls outside the api object */
 export function authFetch(path: string, options?: RequestInit): Promise<Response> {
+  const mergedHeaders = {
+    ...authHeaders(),
+    ...(options?.headers as Record<string, string> || {}),
+  };
   return fetch(`${BASE}${path}`, {
-    headers: authHeaders(),
     ...options,
+    headers: mergedHeaders,
   });
 }
 

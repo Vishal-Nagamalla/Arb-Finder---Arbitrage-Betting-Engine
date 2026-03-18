@@ -186,11 +186,12 @@ class AppState:
         self.scan_sports: list[str] = [
             "basketball_nba", "americanfootball_nfl", "baseball_mlb",
             "icehockey_nhl", "soccer_epl", "soccer_usa_mls",
+            "basketball_ncaab", "americanfootball_ncaaf", "mma_mixed_martial_arts",
         ]
         self.enabled_books: list[str] = [
-            "fanduel", "draftkings", "betmgm", "caesars",
+            "fanduel", "draftkings", "betmgm", "williamhill_us",
             "espnbet", "fanatics", "hardrockbet", "betrivers",
-            "pointsbet", "bet365",
+            "pointsbetus", "bet365", "unibet_us",
         ]
         self.auto_scan_task: Optional[asyncio.Task] = None
         self.scan_lock = asyncio.Lock()  # Prevent concurrent scans

@@ -100,10 +100,48 @@ DEFAULT_TRUSTED_BOOKS = [
     "fanatics", "hardrockbet", "betrivers", "pointsbet", "bet365",
 ]
 
-def get_book_fee(book_key): return SPORTSBOOK_DATA.get(book_key, {}).get("withdrawal_fee_pct", 0.0)
-def get_book_info(book_key): return SPORTSBOOK_DATA.get(book_key)
+# The Odds API sometimes uses different keys than our internal names
+# Map all known API variants to our canonical keys
+API_KEY_ALIASES = {
+    "unibet_us": "unibet",
+    "unibet_eu": "unibet",
+    "pointsbetus": "pointsbet",
+    "williamhill_us": "caesars",
+    "caesars_sportsbook": "caesars",
+    "betmgm": "betmgm",
+    "fanduel": "fanduel",
+    "draftkings": "draftkings",
+    "espnbet": "espnbet",
+    "fanatics": "fanatics",
+    "hardrockbet": "hardrockbet",
+    "betrivers": "betrivers",
+    "bet365": "bet365",
+    "superbook": "superbook",
+    "mybookieag": "mybookie",
+    "bovada": "bovada",
+    "lowvig": "lowvig",
+    "betonlineag": "betonline",
+}
+
+def _resolve_book_key(api_key: str) -> str:
+    """Convert an Odds API book key to our canonical key."""
+    return API_KEY_ALIASES.get(api_key, api_key)
+
+def get_book_fee(book_key):
+    book_key = _resolve_book_key(book_key)
+    return SPORTSBOOK_DATA.get(book_key, {}).get("withdrawal_fee_pct", 0.0)
+
+def get_book_info(book_key):
+    book_key = _resolve_book_key(book_key)
+    return SPORTSBOOK_DATA.get(book_key)
+
 def get_all_books(): return SPORTSBOOK_DATA
+
 def is_trusted(book_key):
+    book_key = _resolve_book_key(book_key)
     b = SPORTSBOOK_DATA.get(book_key)
     return b.get("trusted", False) and b.get("us_licensed", False) if b else False
-def get_arb_risk(book_key): return SPORTSBOOK_DATA.get(book_key, {}).get("arb_risk", "unknown")
+
+def get_arb_risk(book_key):
+    book_key = _resolve_book_key(book_key)
+    return SPORTSBOOK_DATA.get(book_key, {}).get("arb_risk", "unknown")

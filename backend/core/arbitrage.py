@@ -250,7 +250,7 @@ class ArbitrageScanner:
         for point_val, odds_by_outcome in spread_groups.items():
             outcomes_s = list(odds_by_outcome.keys())
             if len(outcomes_s) == 2:
-                spread_event = f"{event_name} (spread {point_val})"
+                spread_event = f"{event_name} [spread {point_val}]"
                 arbs.extend(self._find_two_way_arbs(spread_event, sport, outcomes_s, odds_by_outcome))
 
         # ─── Totals (Over/Under) ─────────────────────────────────────────
@@ -271,6 +271,7 @@ class ArbitrageScanner:
                         continue
                     if point not in total_groups:
                         total_groups[point] = {}
+                    # Clear label: "Over 6.0 (game total)" / "Under 6.0 (game total)"
                     label = f"{name} {point}"
                     if label not in total_groups[point]:
                         total_groups[point][label] = []
@@ -279,7 +280,7 @@ class ArbitrageScanner:
         for total_val, odds_by_outcome in total_groups.items():
             outcomes_t = list(odds_by_outcome.keys())
             if len(outcomes_t) == 2:
-                total_event = f"{event_name} (total {total_val})"
+                total_event = f"{event_name} [game total {total_val}]"
                 arbs.extend(self._find_two_way_arbs(total_event, sport, outcomes_t, odds_by_outcome))
         
         return arbs
