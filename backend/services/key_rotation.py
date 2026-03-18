@@ -53,18 +53,30 @@ class KeyRotationManager:
                 self._current_index = 0
 
     def get_current_key(self) -> str | None:
-        """Get the current active API key."""
+        """Get the best available API key (highest remaining credits)."""
         if not self.keys:
             return None
 
-        # Find a non-exhausted key starting from current index
-        attempts = 0
-        while attempts < len(self.keys):
-            entry = self.keys[self._current_index]
-            if not entry["exhausted"]:
-                return entry["key"]
-            self._current_index = (self._current_index + 1) % len(self.keys)
-            attempts += 1
+        # Find best non-exhausted key with highest remaining
+        best_idx = None
+        best_remaining = -1
+
+        for i, entry in enumerate(self.keys):
+            if entry["exhausted"]:
+                continue
+            rem = entry["remaining"]
+            if rem is None:
+                # Untested key - prefer it over low-remaining keys
+                if best_remaining < 500:
+                    best_idx = i
+                    best_remaining = 500  # Assume full
+            elif rem > best_remaining:
+                best_idx = i
+                best_remaining = rem
+
+        if best_idx is not None:
+            self._current_index = best_idx
+            return self.keys[best_idx]["key"]
 
         logger.warning("All API keys exhausted!")
         return None
@@ -77,22 +89,35 @@ class KeyRotationManager:
                 entry["used"] = used
                 entry["last_used"] = datetime.now(timezone.utc).isoformat()
 
-                # Rotate early - need at least 10 calls for a full scan
-                # (6 sports with retry potential)
-                if remaining is not None and remaining <= 15:
+                # Rotate when truly low - less than ~2 full scans worth
+                if remaining is not None and remaining <= 5:
                     entry["exhausted"] = True
                     logger.info(
-                        f"API key low ({remaining} left), rotating to next key"
+                        f"API key truly exhausted ({remaining} left), marking dead"
                     )
+                    self._rotate()
+                elif remaining is not None and remaining <= 30:
+                    # Getting low but not dead - rotate to spread usage
+                    logger.info(f"API key getting low ({remaining} left), rotating")
                     self._rotate()
                 break
 
     def report_error(self, api_key: str):
-        """Mark a key as potentially exhausted on error (e.g., 401/429)."""
+        """Handle an API error. Only marks exhausted if key is actually low or untested."""
         for entry in self.keys:
             if entry["key"] == api_key:
-                entry["exhausted"] = True
-                logger.warning(f"API key marked exhausted due to error")
+                remaining = entry["remaining"]
+                if remaining is None or remaining <= 20:
+                    # Key is untested or actually low - mark it dead
+                    entry["exhausted"] = True
+                    logger.warning(f"API key marked exhausted (remaining: {remaining})")
+                else:
+                    # Key has plenty of credits - probably a transient error
+                    # Don't kill it, just rotate away temporarily
+                    logger.warning(
+                        f"API key got error but has {remaining} remaining - "
+                        f"rotating but NOT marking exhausted"
+                    )
                 self._rotate()
                 break
 

@@ -210,6 +210,9 @@ class AppState:
             self.key_manager.add_key(key)
             i += 1
         logger.info(f"Loaded {self.key_manager.get_status()['total_keys']} API key(s)")
+        # Reset exhausted status on boot - keys may have recovered
+        self.key_manager.reset_all()
+        logger.info("Reset all key statuses (fresh start)")
 
         # Notifications setup
         ntfy_topic = os.environ.get("NTFY_TOPIC", "")
