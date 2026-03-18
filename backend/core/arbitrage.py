@@ -63,11 +63,11 @@ class ArbOpportunity:
 class ArbitrageScanner:
     """Scans odds data to find arbitrage opportunities."""
 
-    def __init__(self, min_profit_pct: float = 0.5, max_profit_pct: float = 20.0):
+    def __init__(self, min_profit_pct: float = 0.1, max_profit_pct: float = 20.0):
         """
         Args:
-            min_profit_pct: Minimum profit % to flag an arb (filter noise)
-            max_profit_pct: Maximum profit % to flag (extremely high margins 
+            min_profit_pct: Minimum profit % to flag (0.1 = catch everything)
+            max_profit_pct: Maximum profit % to flag (20 = filter stale data errors)
                            are usually data errors, not real arbs)
         """
         self.min_profit_pct = min_profit_pct

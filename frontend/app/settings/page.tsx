@@ -91,8 +91,8 @@ export default function SettingsPage() {
 
   // Form state
   const [bankroll, setBankroll] = useState("1000");
-  const [minProfit, setMinProfit] = useState("0.5");
-  const [maxProfit, setMaxProfit] = useState("20");
+  const [minProfit] = useState("0.1");
+  const [maxProfit] = useState("20");
   const [scanInterval, setScanInterval] = useState("120");
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [selectedBooks, setSelectedBooks] = useState<string[]>([]);
@@ -107,8 +107,6 @@ export default function SettingsPage() {
       setSettings(s);
       setAutoScan(a);
       setBankroll(String(s.bankroll));
-      setMinProfit(String(s.min_profit_pct));
-      setMaxProfit(String(s.max_profit_pct));
       setScanInterval(String(s.auto_scan_interval));
       setSelectedSports(s.scan_sports);
       setSelectedBooks(s.enabled_books);
@@ -201,6 +199,7 @@ export default function SettingsPage() {
                 onChange={(e) => setBankroll(e.target.value)}
                 className="w-full bg-bg-hover border border-bg-border rounded-lg px-3 py-2.5 font-mono text-text-primary focus:outline-none focus:border-accent-green/50 transition-all"
               />
+              <p className="text-[10px] text-text-muted mt-1">Total amount the scanner uses to calculate stakes</p>
             </div>
             <div>
               <label className="block text-[11px] font-mono text-text-muted uppercase tracking-wider mb-1.5">
@@ -213,30 +212,7 @@ export default function SettingsPage() {
                 min="30"
                 className="w-full bg-bg-hover border border-bg-border rounded-lg px-3 py-2.5 font-mono text-text-primary focus:outline-none focus:border-accent-green/50 transition-all"
               />
-            </div>
-            <div>
-              <label className="block text-[11px] font-mono text-text-muted uppercase tracking-wider mb-1.5">
-                Min Profit % to Flag
-              </label>
-              <input
-                type="number"
-                value={minProfit}
-                onChange={(e) => setMinProfit(e.target.value)}
-                step="0.1"
-                className="w-full bg-bg-hover border border-bg-border rounded-lg px-3 py-2.5 font-mono text-text-primary focus:outline-none focus:border-accent-green/50 transition-all"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] font-mono text-text-muted uppercase tracking-wider mb-1.5">
-                Max Profit % (filter errors)
-              </label>
-              <input
-                type="number"
-                value={maxProfit}
-                onChange={(e) => setMaxProfit(e.target.value)}
-                step="1"
-                className="w-full bg-bg-hover border border-bg-border rounded-lg px-3 py-2.5 font-mono text-text-primary focus:outline-none focus:border-accent-green/50 transition-all"
-              />
+              <p className="text-[10px] text-text-muted mt-1">How often auto-scan polls (when enabled)</p>
             </div>
           </div>
         </Section>
@@ -337,35 +313,6 @@ export default function SettingsPage() {
           </div>
           <p className="text-xs text-text-muted mt-2">
             Total: {(settings as any)?.api_keys?.total_remaining ?? 0} requests remaining across {(settings as any)?.api_keys?.total_keys ?? 0} key(s)
-          </p>
-        </Section>
-
-        {/* Notifications */}
-        <Section title="Notifications" description="Get alerted when high-value arbs appear. Resend (free, 100 emails/day) or Gmail SMTP for local dev.">
-          <div className="grid grid-cols-3 gap-4 mb-3">
-            <div className="bg-bg-hover rounded-lg px-4 py-3">
-              <p className="text-[10px] font-mono text-text-muted uppercase">Resend Email (Cloud)</p>
-              <p className={`font-mono font-bold ${(settings as any)?.notifications?.resend_configured ? "text-accent-green" : "text-text-muted"}`}>
-                {(settings as any)?.notifications?.resend_configured
-                  ? (settings as any)?.notifications?.email_address || "Active"
-                  : "Not Set Up"}
-              </p>
-            </div>
-            <div className="bg-bg-hover rounded-lg px-4 py-3">
-              <p className="text-[10px] font-mono text-text-muted uppercase">Pushover (Optional)</p>
-              <p className={`font-mono font-bold ${(settings as any)?.notifications?.pushover_configured ? "text-accent-green" : "text-text-muted"}`}>
-                {(settings as any)?.notifications?.pushover_configured ? "Active" : "Not Set Up"}
-              </p>
-            </div>
-            <div className="bg-bg-hover rounded-lg px-4 py-3">
-              <p className="text-[10px] font-mono text-text-muted uppercase">Min Profit to Notify</p>
-              <p className="font-mono font-bold text-text-primary">
-                ${(settings as any)?.notifications?.min_profit_to_notify ?? "25.00"}
-              </p>
-            </div>
-          </div>
-          <p className="text-xs text-text-muted">
-            For cloud email: sign up at resend.com (free), add RESEND_API_KEY + NOTIFY_EMAIL to your environment variables.
           </p>
         </Section>
       </div>

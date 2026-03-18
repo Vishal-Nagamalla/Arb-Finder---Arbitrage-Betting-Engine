@@ -53,30 +53,23 @@ class KeyRotationManager:
                 self._current_index = 0
 
     def get_current_key(self) -> str | None:
-        """Get the best available API key (highest remaining credits)."""
+        """Get the current active API key. Sticks with current until it's low or exhausted."""
         if not self.keys:
             return None
 
-        # Find best non-exhausted key with highest remaining
-        best_idx = None
-        best_remaining = -1
+        # If current key is still good, keep using it
+        current = self.keys[self._current_index]
+        if not current["exhausted"]:
+            return current["key"]
 
-        for i, entry in enumerate(self.keys):
-            if entry["exhausted"]:
-                continue
-            rem = entry["remaining"]
-            if rem is None:
-                # Untested key - prefer it over low-remaining keys
-                if best_remaining < 500:
-                    best_idx = i
-                    best_remaining = 500  # Assume full
-            elif rem > best_remaining:
-                best_idx = i
-                best_remaining = rem
-
-        if best_idx is not None:
-            self._current_index = best_idx
-            return self.keys[best_idx]["key"]
+        # Current key is exhausted, find the next non-exhausted one
+        for i in range(len(self.keys)):
+            idx = (self._current_index + 1 + i) % len(self.keys)
+            entry = self.keys[idx]
+            if not entry["exhausted"]:
+                self._current_index = idx
+                logger.info(f"Switched to key index {idx}")
+                return entry["key"]
 
         logger.warning("All API keys exhausted!")
         return None
@@ -132,7 +125,20 @@ class KeyRotationManager:
         """Reset exhausted status on all keys (for new month)."""
         for entry in self.keys:
             entry["exhausted"] = False
+            entry["remaining"] = None
+            entry["used"] = None
         self._current_index = 0
+        self._last_reset_month = datetime.now(timezone.utc).month
+        logger.info("All API keys reset (fresh start)")
+
+    def check_monthly_reset(self):
+        """Auto-reset all keys on the 1st of each month (Odds API monthly cycle)."""
+        current_month = datetime.now(timezone.utc).month
+        if not hasattr(self, "_last_reset_month"):
+            self._last_reset_month = current_month
+        if current_month != self._last_reset_month:
+            logger.info(f"New month detected ({self._last_reset_month} -> {current_month}), resetting all API keys")
+            self.reset_all()
 
     def get_total_remaining(self) -> int:
         """Get total remaining requests across all keys."""

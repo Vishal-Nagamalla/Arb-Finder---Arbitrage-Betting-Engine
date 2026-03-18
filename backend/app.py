@@ -284,6 +284,7 @@ class AppState:
             self.fetcher = None
 
     def rotate_key_if_needed(self):
+        self.key_manager.check_monthly_reset()
         current = self.key_manager.get_current_key()
         if self.fetcher and current and self.fetcher.api_key != current:
             self._refresh_fetcher()
