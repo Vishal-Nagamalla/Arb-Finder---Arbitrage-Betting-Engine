@@ -285,8 +285,14 @@ async def lifespan(app: FastAPI):
                     state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
                     state.rotate_key_if_needed()
 
+            def _on_sport_error(error_str):
+                if state.fetcher:
+                    state.key_manager.report_error(state.fetcher.api_key)
+                    state.rotate_key_if_needed()
+
             events = await state.fetcher.get_all_odds(
-                sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+                sports, markets="h2h,spreads,totals",
+                on_usage=_on_sport_usage, on_error=_on_sport_error,
             )
             usage = state.fetcher.get_usage()
             if usage.get("remaining_requests") is not None:
@@ -450,8 +456,14 @@ async def _auto_scan_loop():
                         state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
                         state.rotate_key_if_needed()
 
+                def _on_sport_error(error_str):
+                    if state.fetcher:
+                        state.key_manager.report_error(state.fetcher.api_key)
+                        state.rotate_key_if_needed()
+
                 events = await state.fetcher.get_all_odds(
-                    state.scan_sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+                    state.scan_sports, markets="h2h,spreads,totals",
+                    on_usage=_on_sport_usage, on_error=_on_sport_error,
                 )
                 usage = state.fetcher.get_usage()
                 if usage.get("remaining_requests") is not None:
@@ -581,8 +593,15 @@ async def scan_for_arbs(
                     state.key_manager.report_usage(state.fetcher.api_key, remaining, used)
                     state.rotate_key_if_needed()
 
+            def _on_sport_error(error_str):
+                """Called when a sport fails with auth error - rotate key."""
+                if state.fetcher:
+                    state.key_manager.report_error(state.fetcher.api_key)
+                    state.rotate_key_if_needed()
+
             events = await state.fetcher.get_all_odds(
-                scan_sports, markets="h2h,spreads,totals", on_usage=_on_sport_usage
+                scan_sports, markets="h2h,spreads,totals",
+                on_usage=_on_sport_usage, on_error=_on_sport_error,
             )
             # Final usage report
             usage = state.fetcher.get_usage()

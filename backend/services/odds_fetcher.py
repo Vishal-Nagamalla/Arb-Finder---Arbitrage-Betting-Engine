@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.the-odds-api.com/v4"
 
 
+class APIKeyError(Exception):
+    """Raised when API returns 401/429/403 indicating key is dead or rate limited."""
+    pass
+
+
 class OddsFetcher:
     """Fetch odds data from The Odds API."""
 
@@ -75,21 +80,23 @@ class OddsFetcher:
         Includes retry logic for reliability.
         """
         httpx = self._get_httpx()
-        params = {
-            "apiKey": self.api_key,
-            "regions": self.regions,
-            "oddsFormat": self.odds_format,
-            "markets": markets,
-        }
-        
+
         books = bookmakers_override or self.bookmakers
-        if books:
-            params["bookmakers"] = ",".join(books)
 
         # Retry up to 2 times on failure
         last_error = None
         for attempt in range(3):
             try:
+                # Rebuild params each attempt (api_key may have been rotated)
+                params = {
+                    "apiKey": self.api_key,
+                    "regions": self.regions,
+                    "oddsFormat": self.odds_format,
+                    "markets": markets,
+                }
+                if books:
+                    params["bookmakers"] = ",".join(books)
+
                 async with httpx.AsyncClient() as client:
                     response = await client.get(
                         f"{BASE_URL}/sports/{sport}/odds",
@@ -107,23 +114,28 @@ class OddsFetcher:
                     return events
             except Exception as e:
                 last_error = e
+                error_str = str(e)
+                # Tag auth/rate errors so caller can rotate keys
+                if "401" in error_str or "429" in error_str or "403" in error_str:
+                    last_error = APIKeyError(error_str)
+                    break  # Don't retry with same dead key
                 if attempt < 2:
                     logger.warning(f"Retry {attempt + 1} for {sport}: {e}")
                     import asyncio
-                    await asyncio.sleep(1)  # Brief pause before retry
+                    await asyncio.sleep(1)
 
-        logger.error(f"Failed to fetch {sport} after 3 attempts: {last_error}")
+        logger.error(f"Failed to fetch {sport} after attempts: {last_error}")
         raise last_error
 
     async def get_all_odds(self, sports: list[str], markets: str = "h2h",
-                          on_usage: callable = None) -> list[dict]:
+                          on_usage=None, on_error=None) -> list[dict]:
         """
         Get odds for multiple sports.
-        Retries individual sports on failure, logs clearly what succeeded/failed.
 
         Args:
-            on_usage: Optional callback(remaining, used) called after each sport
-                      to allow key rotation mid-scan.
+            on_usage: callback(remaining, used) after each successful sport
+            on_error: callback(error_str) when a sport fails with auth error,
+                      allows caller to rotate API key mid-scan
         """
         all_events = []
         succeeded = []
@@ -135,9 +147,25 @@ class OddsFetcher:
                 all_events.extend(events)
                 succeeded.append(sport)
 
-                # Report usage after each sport so key manager can rotate mid-scan
                 if on_usage and self.remaining_requests is not None:
                     on_usage(self.remaining_requests, self.used_requests)
+            except APIKeyError as e:
+                # Auth/rate limit error - rotate key and retry this sport
+                logger.warning(f"Key error on {sport}: {e}, requesting rotation...")
+                failed.append(sport)
+                if on_error:
+                    on_error(str(e))
+                    # Retry this sport with the new key
+                    try:
+                        events = await self.get_odds(sport, markets)
+                        all_events.extend(events)
+                        succeeded.append(sport)
+                        failed.pop()  # Remove from failed
+
+                        if on_usage and self.remaining_requests is not None:
+                            on_usage(self.remaining_requests, self.used_requests)
+                    except Exception as retry_e:
+                        logger.error(f"Retry with new key also failed for {sport}: {retry_e}")
             except Exception as e:
                 failed.append(sport)
                 logger.error(f"Skipping {sport}: {e}")
