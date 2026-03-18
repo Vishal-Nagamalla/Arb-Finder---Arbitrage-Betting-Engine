@@ -26,6 +26,7 @@ from backend.services.profit_tracker import ProfitTracker
 from backend.services.notifications import NotificationService
 from backend.services.sportsbook_fees import (
     get_book_fee, get_book_info, get_all_books, is_trusted, SPORTSBOOK_DATA, get_arb_risk,
+    internal_to_api_keys,
 )
 from backend.services.book_rotation import BookRotationService
 from backend.services.scheduler import SmartScheduler
@@ -189,9 +190,9 @@ class AppState:
             "basketball_ncaab", "americanfootball_ncaaf", "mma_mixed_martial_arts",
         ]
         self.enabled_books: list[str] = [
-            "fanduel", "draftkings", "betmgm", "williamhill_us",
+            "fanduel", "draftkings", "betmgm", "caesars",
             "espnbet", "fanatics", "hardrockbet", "betrivers",
-            "pointsbetus", "bet365", "unibet_us",
+            "pointsbet", "bet365", "unibet",
         ]
         self.auto_scan_task: Optional[asyncio.Task] = None
         self.scan_lock = asyncio.Lock()  # Prevent concurrent scans
@@ -257,7 +258,7 @@ class AppState:
             if "enabled_books" in saved:
                 self.enabled_books = saved["enabled_books"]
                 if self.fetcher:
-                    self.fetcher.bookmakers = self.enabled_books
+                    self.fetcher.bookmakers = internal_to_api_keys(self.enabled_books)
             if "min_profit_pct" in saved:
                 self.scanner.min_profit_pct = float(saved["min_profit_pct"])
             if "max_profit_pct" in saved:
@@ -269,14 +270,15 @@ class AppState:
     def _refresh_fetcher(self):
         current_key = self.key_manager.get_current_key()
         if current_key:
+            api_books = internal_to_api_keys(self.enabled_books)
             if self.fetcher:
-                # Update key in-place so mid-scan rotation works
                 self.fetcher.api_key = current_key
+                self.fetcher.bookmakers = api_books
                 logger.info(f"Switched fetcher to new API key")
             else:
                 self.fetcher = OddsFetcher(
                     api_key=current_key, regions="us",
-                    odds_format="decimal", bookmakers=self.enabled_books,
+                    odds_format="decimal", bookmakers=api_books,
                 )
         else:
             self.fetcher = None
@@ -862,7 +864,7 @@ async def update_settings(settings: SettingsUpdate):
         state.scan_sports = settings.scan_sports; updated["scan_sports"] = settings.scan_sports
     if settings.enabled_books is not None:
         state.enabled_books = settings.enabled_books
-        if state.fetcher: state.fetcher.bookmakers = settings.enabled_books
+        if state.fetcher: state.fetcher.bookmakers = internal_to_api_keys(settings.enabled_books)
         updated["enabled_books"] = settings.enabled_books
     if settings.min_profit_pct is not None:
         state.scanner.min_profit_pct = settings.min_profit_pct; updated["min_profit_pct"] = settings.min_profit_pct

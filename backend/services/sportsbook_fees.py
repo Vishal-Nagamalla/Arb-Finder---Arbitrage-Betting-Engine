@@ -123,9 +123,20 @@ API_KEY_ALIASES = {
     "betonlineag": "betonline",
 }
 
+# Reverse map: our internal names -> Odds API key names
+INTERNAL_TO_API = {
+    "caesars": "williamhill_us",
+    "pointsbet": "pointsbetus",
+    "unibet": "unibet_us",
+}
+
 def _resolve_book_key(api_key: str) -> str:
     """Convert an Odds API book key to our canonical key."""
     return API_KEY_ALIASES.get(api_key, api_key)
+
+def internal_to_api_keys(internal_keys: list[str]) -> list[str]:
+    """Convert our internal book names to Odds API names for the API call."""
+    return [INTERNAL_TO_API.get(k, k) for k in internal_keys]
 
 def get_book_fee(book_key):
     book_key = _resolve_book_key(book_key)
