@@ -1,229 +1,128 @@
-# Arb Finder - Sports Betting Arbitrage Engine
+# Arb Finder - Real-Time Sports Arbitrage Detection Engine
 
-Personal tool that detects guaranteed-profit arbitrage opportunities across US-licensed sportsbooks, calculates exact bet amounts, and sends push notifications to your phone when opportunities appear.
+Full-stack system that monitors real-time odds across 11 US-licensed sportsbooks, detects guaranteed-profit arbitrage opportunities across moneyline, spread, and totals markets, calculates optimal stake allocations, and delivers push notifications to your phone, all running autonomously on cloud infrastructure.
 
 ## How Arbitrage Works
 
-Sportsbooks set odds independently. When two books disagree enough, you can bet both sides and guarantee profit no matter who wins.
+Sportsbooks set odds independently. When two books disagree enough on a game, you can bet both sides and lock in a guaranteed profit regardless of outcome.
 
 **Example:** BetMGM has Lakers at +155, DraftKings has Celtics at -143.
-- Bet $200 on Lakers (BetMGM)
-- Bet $300 on Celtics (DraftKings)
-- If Lakers win: BetMGM pays $510. Profit: $10.
-- If Celtics win: DraftKings pays $510. Profit: $10.
-- Either way, you invested $500 and get back $510. Guaranteed.
+- Bet $200 on Lakers (BetMGM), $300 on Celtics (DraftKings)
+- Lakers win: BetMGM pays $510. Profit: $10.
+- Celtics win: DraftKings pays $510. Profit: $10.
+- Guaranteed $10 profit on $500 invested, no matter the outcome.
 
-## What This System Does
+## Architecture
 
-1. **Scans** 10+ sportsbooks across NBA, NFL, MLB, NHL, MLS, EPL, MMA, NCAAB
-2. **Detects** odds discrepancies that create arbitrage windows
-3. **Calculates** exact dollar amounts to bet on each side
-4. **Notifies** you via push notification on your phone
-5. **Optimizes** how to spread your budget across multiple arbs
-6. **Rotates** which sportsbooks you use to avoid detection
-7. **Tracks** your bet history and cumulative profit in a persistent database
-8. **Runs 24/7** on the cloud, scanning automatically at optimal times
+```
+                        cron-job.org
+                        (keep-alive ping every 14min)
+                              |
+                              v
+Phone (ntfy)         Vercel (Next.js PWA)          Render (FastAPI)          The Odds API
+    |                      |                              |                       |
+    | <-- push notifs --   | <---- REST API ---->         | <--- odds data -----> |
+    |                      |                              |     (h2h, spreads,    |
+    |                 [React UI]                    [FastAPI Server]    totals)   |
+    |                 - Scanner                     - Smart Scheduler (9/day)     |
+    |                 - Calculator                  - Arb Scanner (3 markets)     |
+    |                 - Budget Optimizer            - Stake Calculator            |
+    |                 - Bet History                 - Budget Optimizer            |
+    |                 - Settings (persistent)       - Key Rotation (6 keys)      |
+    |                                               - Book Rotation              |
+    |                                               - Notification Service       |
+    |                                                     |
+    |                                               [Neon Postgres]
+    |                                               - Bet history
+    |                                               - Persistent settings
+```
 
-## Features
+## Tech Stack
 
-- **Live Scanner** - One-click scan across all sportsbooks with retry logic
-- **Budget Optimizer** - Input total budget, system determines optimal allocation across arbs with book rotation
-- **Manual Calculator** - Input odds from any two books, get full arb breakdown
-- **Smart Scheduler** - Auto-scans at 11am, 12:30pm, 5:30pm, 6:30pm, 8pm ET daily
-- **Push Notifications** - Free via ntfy.sh app on iPhone/Android
-- **Bet History** - Persistent Neon Postgres storage, tracks P/L by sport and book
-- **Book Rotation** - Spreads bets across sportsbooks to avoid account limits
-- **API Key Rotation** - Multiple Odds API keys for extended monthly quota
-- **Mobile App** - PWA installable on iPhone home screen
-- **Password Protected** - Secure API with bearer token auth
-- **Started Game Filter** - Automatically removes games already in progress
-- **Scan Lock** - Prevents wasted API calls from rapid clicking
+**Backend:** Python, FastAPI, Uvicorn, httpx, Pydantic
+**Frontend:** Next.js 14, React, TypeScript, Tailwind CSS
+**Database:** Neon Postgres (cloud), SQLite (local dev)
+**Deployment:** Render (backend), Vercel (frontend PWA)
+**Notifications:** ntfy.sh (free push notifications)
+**Data Source:** The Odds API (real-time sportsbook odds)
+**Auth:** Bearer token middleware
 
-## Trusted Sportsbooks (US-Licensed Only)
+## Key Engineering Features
 
-FanDuel, DraftKings, BetMGM, Caesars, ESPN BET, Fanatics, Hard Rock Bet, BetRivers, PointsBet, bet365, Unibet
+### Multi-Key API Rotation
+Manages a pool of API keys with automatic failover. Tracks remaining credits per key, detects dead keys via HTTP status codes, and switches to the next healthy key mid-scan. Monthly auto-reset when the API billing cycle refreshes.
 
-All verified US state-licensed. All have $0 withdrawal fees for standard methods (PayPal, Venmo, bank transfer). No offshore books.
+### Three-Market Arb Detection
+Scans moneyline (h2h), point spreads, and totals (over/under) markets simultaneously. For each game, compares every cross-book pairing and identifies where `(1/odds_A) + (1/odds_B) < 1.0`. Filters started games, validates odds bounds, and deduplicates overlapping opportunities.
 
-Each book has an arb detection risk rating:
-- **Low Risk** (safe to use frequently): ESPN BET, Fanatics, Hard Rock, BetRivers, PointsBet
-- **Medium Risk** (spread usage out): FanDuel, BetMGM, Caesars, Unibet
-- **High Risk** (use sparingly): DraftKings, bet365
+### Smart Scheduler
+Nine daily scans at optimal times (11am, 12:30pm, 5-8pm ET every 30min). Each scan selects relevant sports based on time of day to conserve API credits. Always-on via external health check pings. Sends push notifications on every scan (arbs found or status update).
+
+### Budget Optimizer with Book Rotation
+Given a total budget and multiple arb opportunities, determines optimal allocation using weighted scoring. Factors in ROI, sportsbook detection risk ratings, and historical bet frequency per book. Prevents account limiting by spreading activity across low-risk books.
+
+### Progressive Web App
+Installable on iPhone via Safari "Add to Home Screen". Full-screen standalone experience with no browser chrome. Bottom navigation on mobile, sidebar on desktop. Scan results persist in React context across page navigation.
+
+### Persistent Settings
+All user configuration (bankroll, sports, sportsbooks, intervals) saved to Postgres via the settings API. Survives backend redeploys. Loads on boot, saves on every settings change.
+
+## Supported Markets
+
+| Market | Description | Arb Viable |
+|--------|-------------|:----------:|
+| Moneyline (h2h) | Who wins the game | Yes |
+| Point Spread | Margin of victory | Yes |
+| Totals (O/U) | Combined score over/under | Yes |
+| Props | Player/event specifics | Requires paid API |
+| Futures | Season-long outcomes | No (can't lock both sides) |
+| Parlays | Multi-bet combos | No (not guaranteed) |
+
+## Trusted Sportsbooks
+
+All US state-licensed, $0 withdrawal fees, with arb detection risk ratings:
+
+| Book | Risk | Notes |
+|------|:----:|-------|
+| ESPN BET | Low | Safest for frequent arb betting |
+| Fanatics | Low | Fastest payouts (24-48 hrs) |
+| Hard Rock Bet | Low | Competitive odds, expanding |
+| BetRivers | Low | Low minimums |
+| PointsBet | Low | Transitioning to Fanatics |
+| FanDuel | Medium | Largest US book (~38% share) |
+| BetMGM | Medium | Higher min bet ($0.50) |
+| Caesars | Medium | Strong market coverage |
+| Unibet | Medium | European operator |
+| DraftKings | High | Active arb detection |
+| bet365 | High | Highest limits but monitors closely |
 
 ## The Math
 
-For a 2-outcome event with decimal odds d1 and d2:
-
-- Arb exists when: `(1/d1) + (1/d2) < 1.0`
-- Stake on outcome 1: `bankroll * (1/d1) / ((1/d1) + (1/d2))`
-- Stake on outcome 2: `bankroll * (1/d2) / ((1/d1) + (1/d2))`
-- Guaranteed return: `bankroll / ((1/d1) + (1/d2))`
-- Profit: `return - bankroll`
-
-## Project Structure
+For 2-way arb with decimal odds d1, d2:
 
 ```
-arb-finder/
-  .env                              # Secrets (never commit)
-  Dockerfile                        # Cloud deployment
-  backend/
-    app.py                          # FastAPI server, all endpoints, auth middleware
-    config.py                       # Environment loader
-    core/
-      odds_converter.py             # American/Decimal/Probability conversion
-      arbitrage.py                  # Arb detection engine (2-way and 3-way)
-      calculator.py                 # Exact stake split calculator
-      budget_optimizer.py           # Multi-arb budget allocation with rotation
-    services/
-      odds_fetcher.py               # The Odds API integration with retry logic
-      key_rotation.py               # Multi-key API management
-      profit_tracker.py             # Neon Postgres / SQLite bet history
-      notifications.py              # ntfy.sh push + Resend email + Gmail SMTP
-      sportsbook_fees.py            # Book fee/trust/risk database
-      book_rotation.py              # Anti-detection sportsbook spreading
-      scheduler.py                  # Smart auto-scan at optimal times
-    models/
-      schemas.py                    # Data models
-  frontend/
-    public/
-      manifest.json                 # PWA manifest
-      icon-192.png                  # App icon
-      icon-512.png                  # App icon
-      apple-touch-icon.png          # iOS icon
-    app/
-      layout.tsx                    # Root layout with PWA meta tags
-      page.tsx                      # Live Scanner dashboard
-      budget/page.tsx               # Budget optimizer
-      calculator/page.tsx           # Manual calculator
-      history/page.tsx              # Bet history and P/L tracking
-      settings/page.tsx             # Configuration
-    components/
-      Sidebar.tsx                   # Desktop sidebar + mobile bottom nav
-    lib/
-      api.ts                        # API client with auth headers
-      utils.ts                      # Formatting and time helpers
+Arb exists when:     (1/d1) + (1/d2) < 1.0
+Stake on outcome 1:  bankroll * (1/d1) / ((1/d1) + (1/d2))
+Stake on outcome 2:  bankroll * (1/d2) / ((1/d1) + (1/d2))
+Guaranteed return:   bankroll / ((1/d1) + (1/d2))
+Profit:              return - bankroll
 ```
 
-## Quick Start (Local Development)
+## API Budget
 
-### 1. Get an API Key
+Each Odds API call with `h2h,spreads,totals` costs 3 credits. Free tier = 500 credits/key/month.
 
-Sign up at https://the-odds-api.com/ (free, 500 requests/month)
+| Sports | Scans/Day | Credits/Day | Credits/Month | Keys Needed |
+|--------|-----------|-------------|---------------|:-----------:|
+| 1 (NBA only) | 9 | 27 | 810 | 2 |
+| 3 (NBA+NHL+MLB) | 9 | 81 | 2,430 | 5 |
+| 6 (all major) | 9 | 162 | 4,860 | 10 |
 
-### 2. Set Up Environment
+## Realistic Expectations
 
-```bash
-cd arb-finder
-cp .env.example .env
-# Edit .env with your API key
-```
-
-Minimum `.env` for local dev:
-```
-ODDS_API_KEY=your_key_here
-```
-
-### 3. Start Backend
-
-```bash
-pip install httpx pydantic fastapi "uvicorn[standard]" psycopg2-binary
-uvicorn backend.app:app --reload --port 8000
-```
-
-### 4. Start Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Open http://localhost:3000
-
-## Cloud Deployment (Runs 24/7)
-
-### Backend: Render (Free)
-
-1. Push code to a private GitHub repo
-2. Go to https://render.com, sign up, connect GitHub
-3. New > Web Service > select your repo
-4. Environment: Docker
-5. Add environment variables:
-   - `ODDS_API_KEY` - your Odds API key
-   - `DATABASE_URL` - your Neon Postgres connection string
-   - `NTFY_TOPIC` - your ntfy.sh topic for push notifications
-   - `DASHBOARD_URL` - your Vercel URL
-   - `MIN_PROFIT_TO_NOTIFY` - set to 0 for all arbs
-   - `APP_PASSWORD` - secret password to protect API
-6. Select Free tier, deploy
-
-### Frontend: Vercel (Free)
-
-1. Go to https://vercel.com, sign up, connect GitHub
-2. Import repo, set Root Directory to `frontend`
-3. Add environment variables:
-   - `NEXT_PUBLIC_API_URL` - Render URL + /api
-   - `BACKEND_URL` - Render URL
-   - `NEXT_PUBLIC_APP_PASSWORD` - same password as Render
-4. Deploy
-
-### Database: Neon Postgres (Free, via Vercel)
-
-1. In Vercel, go to Storage tab > Create Database > Neon Postgres
-2. Copy the connection string from the database dashboard
-3. Add it as `DATABASE_URL` in Render's environment variables
-4. Redeploy Render
-
-### Push Notifications: ntfy.sh (Free)
-
-1. Download "ntfy" app on iPhone from App Store
-2. Subscribe to a secret topic name (e.g., `arb-finder-vishal-x9k2`)
-3. Add `NTFY_TOPIC=arb-finder-vishal-x9k2` to Render
-4. Redeploy
-
-### Install as iPhone App
-
-1. Open your Vercel URL in **Safari** on iPhone
-2. Tap Share > "Add to Home Screen"
-3. Choose "Open as Web App"
-
-## How the Scheduler Works
-
-The backend runs 5 scans per day at optimal times (all ET):
-- **11:00 AM** - Morning lines posted for evening games
-- **12:30 PM** - Mid-day line movement check
-- **5:30 PM** - Pre-game rush, best arb windows
-- **6:30 PM** - Right before tip-off/puck drop
-- **8:00 PM** - Late games and west coast lines
-
-Each scan checks relevant sports for that time slot to conserve API calls. Total: ~30 API calls/day, ~900/month (fits in 2 free keys).
-
-When arbs are found, you get a push notification with exact bet instructions and a button to open your dashboard.
-
-## API Usage
-
-- 5 scans/day x 6 sports = ~30 calls/day, ~900/month
-- Each free Odds API key = 500 requests/month
-- 2 keys = 1,000/month (enough with margin)
-- Add keys: `ODDS_API_KEY`, `ODDS_API_KEY_2`, `ODDS_API_KEY_3`
-- System auto-rotates when one key runs low
-- Scan lock prevents wasted calls from double-clicking
-- Retry logic (3 attempts) prevents lost data from timeouts
-
-## When to Find Arbs
-
-- **11am-1pm ET** - Lines first posted for evening games
-- **5-7pm ET** - Pre-game rush, lines moving fast
-- **NFL Sundays 12-1pm ET** - Massive multi-game slate
-- **Right before tip-off** - Last-minute line movements
-
-Arbs are rare and short-lived (minutes to hours). Odds for games are only available 12-48 hours before start time.
-
-## Security
-
-- `APP_PASSWORD` protects all API endpoints
-- API keys and database credentials only exist on Render
-- Health check is the only public endpoint
-- All sportsbook data stays on your private infrastructure
-
-Built by Vishal Nagamalla | https://vishal-nagamalla.github.io/
+- **Arb frequency:** 0-8 per day depending on sports activity
+- **Profit margins:** 0.3-4% per arb
+- **Window duration:** 2-30 minutes before odds converge
+- **Best times:** 5-8pm ET (pre-game line movement)
+- **Best days:** NFL Sundays, multi-game NBA/NHL nights
+- **Risk:** Sportsbook account limiting (book rotation mitigates)
