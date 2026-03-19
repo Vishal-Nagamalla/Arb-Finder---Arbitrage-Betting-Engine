@@ -338,9 +338,12 @@ async def lifespan(app: FastAPI):
             return []
 
     async def scheduled_notify(arbs: list[dict], label: str):
-        """Callback for scheduler - sends digest email."""
+        """Callback for scheduler - always notifies so user knows system is alive."""
         if state.notifier.is_configured:
-            state.notifier.send_digest(arbs, label)
+            if arbs:
+                state.notifier.send_digest(arbs, label)
+            else:
+                state.notifier.send_status_update(label, state.events_scanned)
 
     state.scheduler.set_callbacks(scheduled_scan, scheduled_notify)
 

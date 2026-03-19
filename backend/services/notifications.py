@@ -388,6 +388,36 @@ class NotificationService:
                 sent += 1
         return sent
 
+    def send_status_update(self, scan_label: str, events_scanned: int = 0) -> bool:
+        """Send a status notification when no arbs were found (so user knows system is alive)."""
+        if not self.ntfy_configured:
+            return False
+
+        message = (
+            f"Scanned {events_scanned} events across all sports.\n"
+            f"No arbitrage opportunities at this time.\n\n"
+            f"Next scan will run automatically."
+        )
+
+        try:
+            data = message.encode("utf-8")
+            headers = {
+                "Title": f"Scan complete: no arbs ({scan_label})",
+                "Priority": "2",  # Low priority - just a status update
+                "Tags": "eyes",
+            }
+            dashboard_url = os.environ.get("DASHBOARD_URL", "")
+            if dashboard_url:
+                headers["Click"] = dashboard_url
+
+            req = Request(f"https://ntfy.sh/{self.ntfy_topic}", data=data, headers=headers, method="POST")
+            with urlopen(req, timeout=10):
+                logger.info(f"Status update sent: no arbs ({scan_label})")
+                return True
+        except Exception as e:
+            logger.error(f"Status update failed: {e}")
+            return False
+
     def send_digest(self, arbs: list[dict], scan_label: str) -> bool:
         """Send a digest summarizing ALL arbs found in a scheduled scan."""
         if not self.is_configured:

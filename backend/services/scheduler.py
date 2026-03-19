@@ -188,8 +188,9 @@ class SmartScheduler:
                     self.last_label = label
                     self.total_scheduled_runs += 1
 
-                    if arbs and self._notify_callback:
-                        await self._notify_callback(arbs, label)
+                    # Always notify - even with 0 arbs so user knows system is alive
+                    if self._notify_callback:
+                        await self._notify_callback(arbs or [], label)
 
                     logger.info(
                         f"Scheduler: '{label}' complete. "
