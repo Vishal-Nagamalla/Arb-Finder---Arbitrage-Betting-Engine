@@ -1,42 +1,26 @@
 """
 Smart Scheduler
-Runs arb scans at optimal times and sends email digests.
+Runs arb scans at optimal times and sends status/arb notifications.
 
-Optimal scan windows (all times ET):
-- 11:00 AM: Lines posted for evening games (NBA, NHL, MLB)
-- 12:30 PM: Mid-day check, lines moving
-- 5:30 PM: Pre-game rush, best arb windows
-- 6:30 PM: Right before tip-off/puck drop
-- 8:00 PM: Late games + west coast lines
+Scan schedule (all times ET):
+- 11:00 AM, 12:30 PM: Morning/mid-day lines
+- 5:00-8:00 PM every 30min: Peak arb window
 
 API optimization:
-- Each scan uses ~1 request per sport
-- 6 sports x 5 scans/day = ~30 requests/day
-- 30 x 30 days = ~900/month (under 2 keys worth)
-- Skip sports with no games (weekday NFL, off-season, etc.)
+- Each scan uses ~3 credits per sport (h2h + spreads + totals)
+- Scans only relevant sports per time slot
 """
 
 import asyncio
 import logging
 from datetime import datetime, time, timezone, timedelta
 from typing import Callable, Awaitable
+from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
 
-# ET timezone - compute correct offset based on DST
-def _get_et_offset() -> timedelta:
-    """Get current ET offset. EDT (Mar-Nov) = UTC-4, EST (Nov-Mar) = UTC-5."""
-    now = datetime.now(timezone.utc)
-    month = now.month
-    # Simplified DST check: March 2nd Sunday through November 1st Sunday
-    # Good enough for our purposes
-    if 3 <= month <= 10:
-        return timedelta(hours=-4)  # EDT
-    elif month == 11:
-        # First Sunday of November
-        return timedelta(hours=-5)  # EST (approximate)
-    else:
-        return timedelta(hours=-5)  # EST (Dec, Jan, Feb)
+# Proper ET timezone (handles EDT/EST automatically)
+ET = ZoneInfo("America/New_York")
 
 # Default scan schedule (ET times)
 # Peak window (5-8pm) gets extra scans since that's when arbs appear most
@@ -81,24 +65,24 @@ def get_sports_for_time(hour_et: int) -> list[str]:
 
 
 def et_now() -> datetime:
-    """Get current time in ET."""
-    return datetime.now(timezone.utc) + _get_et_offset()
+    """Get current time in ET (handles EDT/EST automatically)."""
+    return datetime.now(ET)
 
 
 def next_scan_time(schedule: list[dict] | None = None) -> tuple[datetime, str]:
-    """Calculate the next scheduled scan time (in UTC)."""
+    """Calculate the next scheduled scan time (returns UTC datetime)."""
     schedule = schedule or DEFAULT_SCHEDULE
-    now_et = et_now()
-    today = now_et.date()
+    now = datetime.now(ET)
+    today = now.date()
 
     for slot in schedule:
         scan_et = datetime.combine(
             today,
             time(slot["hour"], slot["minute"]),
-            tzinfo=timezone(_get_et_offset()),
+            tzinfo=ET,
         )
-        if scan_et > now_et:
-            scan_utc = scan_et - _get_et_offset()  # Convert to UTC
+        if scan_et > now:
+            scan_utc = scan_et.astimezone(timezone.utc)
             return scan_utc, slot["label"]
 
     # All today's scans passed, schedule first scan tomorrow
@@ -107,9 +91,9 @@ def next_scan_time(schedule: list[dict] | None = None) -> tuple[datetime, str]:
     scan_et = datetime.combine(
         tomorrow,
         time(first["hour"], first["minute"]),
-        tzinfo=timezone(_get_et_offset()),
+        tzinfo=ET,
     )
-    scan_utc = scan_et - _get_et_offset()
+    scan_utc = scan_et.astimezone(timezone.utc)
     return scan_utc, first["label"]
 
 
